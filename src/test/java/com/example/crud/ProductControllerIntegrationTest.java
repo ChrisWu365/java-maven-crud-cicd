@@ -10,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 
@@ -28,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class ProductControllerIntegrationTest {
 
     @Autowired
@@ -89,5 +91,12 @@ class ProductControllerIntegrationTest {
 //                        .content(objectMapper.writeValueAsString(invalid)))
 //                .andExpect(status().isBadRequest());
 //    }
+
+    @Test
+    void shouldExposeOpenApiDocumentInTestProfile() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.info.title", is("Product CRUD API")));
+    }
 
 }

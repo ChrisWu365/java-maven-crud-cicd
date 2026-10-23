@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 User=@APP_USER@
 WorkingDirectory=@APP_DIR@
+Environment=SPRING_PROFILES_ACTIVE=prod
 ExecStart=/usr/bin/java -jar @APP_DIR@/app.jar
 SuccessExitStatus=143
 Restart=on-failure
