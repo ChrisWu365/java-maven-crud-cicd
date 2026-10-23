@@ -36,7 +36,7 @@ jobs:
           port: 22
           source: "target/*.jar"
           target: "/home/${{ secrets.AZURE_VM_USER }}/app/"
-          strip_components: 0
+          strip_components: 1
 
       # CD phase 2: log onto Azure VM, kill the old java process, and deploy the new artifact
       - name: Execute remote SSH commands
@@ -54,6 +54,7 @@ jobs:
               sudo apt-get install -y openjdk-8-jdk
             else
               echo "Java is already installed."
+              echo "Java version: $(java -version 2>&1 | head -n 1)"
             fi
             
             # Kill the old java process if it exists
