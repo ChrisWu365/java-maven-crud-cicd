@@ -29,6 +29,28 @@ mvn clean verify
 mvn checkstyle:check
 ```
 
+项目还使用 SpotBugs 和 PMD：
+
+- **Checkstyle**：检查代码格式、命名、导入和可读性规范
+- **SpotBugs**：基于字节码分析潜在缺陷，例如空指针、错误的资源使用和可疑代码
+- **PMD**：基于源码规则检查常见错误和不良实践
+
+这三个工具都绑定在 `verify` 阶段，因此完整检查命令会同时执行测试、Checkstyle、SpotBugs 和 PMD：
+
+```bash
+mvn clean verify
+```
+
+也可以单独运行：
+
+```bash
+mvn checkstyle:check
+mvn spotbugs:check
+mvn pmd:check
+```
+
+任何工具发现达到阻断级别的问题，Maven 都会返回失败，GitHub Actions 也会失败。
+
 ## API
 
 | 方法 | 路径 | 说明 |
@@ -61,4 +83,4 @@ mvn checkstyle:check
 
 你可以在 GitHub 仓库的 **Actions** 页面查看每次构建结果。这个项目先聚焦 CI；后续可以在 CI 通过后增加 Docker 镜像发布或部署到云平台的 CD job。
 
-`checkstyle.xml` 定义了当前项目的代码规范，例如缩进、空白字符、导入、命名、花括号和单行长度。实际团队通常还会根据项目需要增加 SpotBugs 或 PMD，用于检查潜在缺陷；本示例先使用 Checkstyle 让 CI 的静态检查流程保持简单易懂。
+`checkstyle.xml` 定义了当前项目的代码规范，例如缩进、空白字符、导入、命名、花括号和单行长度。SpotBugs 与 PMD 使用 Maven 插件提供的规则集；实际团队通常会根据误报情况维护项目自己的规则集和排除配置。
