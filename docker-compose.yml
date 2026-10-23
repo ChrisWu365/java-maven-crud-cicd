@@ -1,0 +1,12 @@
+services:
+  product-crud:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_REF:-product-crud:local}
+    container_name: product-crud
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

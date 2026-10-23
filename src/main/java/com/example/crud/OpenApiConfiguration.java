@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration
-@Profile({"dev", "test"})
+@Profile({"local", "dev", "test"})
 public class OpenApiConfiguration {
 
     @Bean

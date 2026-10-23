@@ -121,4 +121,49 @@ sudo systemctl status product-crud
 sudo journalctl -u product-crud -f
 ```
 
+## Docker Deployment
+
+The project supports a GitHub Actions Docker CI/CD flow. The multi-stage `Dockerfile` builds the application with Maven and runs it in a smaller Java 8 JRE image as a non-root user. The container uses the `prod` profile, so Swagger remains disabled.
+
+Build and run the image:
+
+```bash
+docker build -t product-crud:local .
+docker run --name product-crud --restart unless-stopped -p 8080:8080 product-crud:local
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up --build -d
+docker compose logs -f product-crud
+docker compose down
+```
+
+The API is available at `http://localhost:8080/api/products`. Container logs are written to standard output and can be viewed with `docker logs` or `docker compose logs`; the application does not write logs beside the JAR.
+
+On pushes to `main`, GitHub Actions first runs tests and static analysis, then builds and pushes an immutable `sha-<commit>` image and `latest` to GitHub Container Registry (GHCR). The deploy job logs in to GHCR on the Azure VM, pulls the immutable image, and recreates the container with Docker Compose. Pull requests run CI only and never deploy.
+
+Before using the Docker CD job, install Docker Engine and the Docker Compose v2 plugin on the Azure VM. The GHCR package must be readable by the VM; for a private package, the workflow uses `GITHUB_TOKEN` through the remote deployment script. Configure database connection settings with environment variables or deployment secrets rather than committing credentials to `docker-compose.yml`.
+
+### Prepare an Ubuntu Azure VM
+
+Run the one-time host setup script as the SSH user that will execute deployments:
+
+```bash
+sudo bash scripts/install-docker-ubuntu.sh
+```
+
+The script uses Docker's official Ubuntu repository, installs Docker Engine, Buildx, and the Docker Compose v2 plugin, enables the Docker service, and adds the current SSH user to the `docker` group. Log out and log in again after it finishes so the group membership is applied. Verify the installation with:
+
+```bash
+docker --version
+docker compose version
+docker run --rm hello-world
+```
+
+The script targets Ubuntu VMs. Review it before execution if the VM has existing Docker packages, custom APT policies, or a non-Ubuntu distribution.
+
+The existing systemd deployment files remain available as an alternative deployment method, but the GitHub Actions workflow now deploys the container image rather than copying and launching a JAR directly.
+
 `checkstyle.xml` defines the project's style rules, including indentation, whitespace, imports, naming, braces, and line length. SpotBugs and PMD use Maven plugin rule sets; teams commonly maintain project-specific rules and exclusions based on false-positive findings.
