@@ -75,7 +75,7 @@ mvn pmd:check
 
 ## GitHub Actions CI
 
-`.github/workflows/ci.yml` 会在推送到 `main` 或创建针对 `main` 的 Pull Request 时触发，依次完成：
+`.github/workflows/cicd.yml` 会在推送到 `main` 或创建针对 `main` 的 Pull Request 时触发，依次完成：
 
 1. 检出代码
 2. 使用 Temurin Java 8，并缓存 Maven 依赖
