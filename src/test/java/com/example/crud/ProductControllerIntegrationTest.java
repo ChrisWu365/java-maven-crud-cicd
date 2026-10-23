@@ -85,4 +85,12 @@ class ProductControllerIntegrationTest {
                         .content(objectMapper.writeValueAsString(invalid)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void ciFailureDemo_shouldFailUntilThisTestIsRemoved() throws Exception {
+        // Temporary failure used to verify that GitHub Actions reports failed tests.
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
 }
