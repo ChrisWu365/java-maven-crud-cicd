@@ -4,9 +4,11 @@ set -eu
 
 APP_DIR="${1:?Usage: deploy.sh <app-directory>}"
 APP_JAR="${APP_DIR}/app.jar"
-APP_LOG="${APP_DIR}/app.log"
+LOG_DIR="$(dirname "${APP_DIR}")/logs"
+APP_LOG="${LOG_DIR}/app.log"
 
 mkdir -p "${APP_DIR}"
+mkdir -p "${LOG_DIR}"
 
 if ! command -v java >/dev/null 2>&1; then
   echo "Java is not installed. Installing Java 8 runtime..."

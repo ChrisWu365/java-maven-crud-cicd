@@ -84,3 +84,5 @@ mvn pmd:check
 你可以在 GitHub 仓库的 **Actions** 页面查看每次构建结果。这个项目先聚焦 CI；后续可以在 CI 通过后增加 Docker 镜像发布或部署到云平台的 CD job。
 
 `checkstyle.xml` 定义了当前项目的代码规范，例如缩进、空白字符、导入、命名、花括号和单行长度。SpotBugs 与 PMD 使用 Maven 插件提供的规则集；实际团队通常会根据误报情况维护项目自己的规则集和排除配置。
+
+部署脚本会将应用文件和日志分开保存：JAR 位于远程服务器的 `app` 目录，日志位于同级的 `logs/app.log`。生产环境更常见的做法是使用 systemd/journald 或容器标准输出统一管理进程和日志；当前示例使用 `nohup`，便于学习 SSH 部署流程。
