@@ -23,6 +23,12 @@ mvn spring-boot:run
 mvn clean verify
 ```
 
+`verify` 阶段还会执行 Checkstyle 静态检查。如果代码风格检查失败，Maven 构建会失败：
+
+```bash
+mvn checkstyle:check
+```
+
 ## API
 
 | 方法 | 路径 | 说明 |
@@ -54,3 +60,5 @@ mvn clean verify
 3. 执行 `mvn --batch-mode verify`，编译代码并运行测试
 
 你可以在 GitHub 仓库的 **Actions** 页面查看每次构建结果。这个项目先聚焦 CI；后续可以在 CI 通过后增加 Docker 镜像发布或部署到云平台的 CD job。
+
+`checkstyle.xml` 定义了当前项目的代码规范，例如缩进、空白字符、导入、命名、花括号和单行长度。实际团队通常还会根据项目需要增加 SpotBugs 或 PMD，用于检查潜在缺陷；本示例先使用 Checkstyle 让 CI 的静态检查流程保持简单易懂。
