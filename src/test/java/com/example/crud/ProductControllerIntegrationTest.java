@@ -23,8 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 集成测试：启动完整的 Spring 应用上下文，使用真实的 Controller、Service、
- * Repository 和 H2 数据库，通过 MockMvc 验证 HTTP 接口和组件之间的协作。
+ * Integration test: starts the complete Spring application context and uses the real Controller,
+ * Service, Repository, and H2 database to verify HTTP behavior and component collaboration through MockMvc.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

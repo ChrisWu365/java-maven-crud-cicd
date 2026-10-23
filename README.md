@@ -1,47 +1,47 @@
-# Spring Boot Maven CRUD 示例
+# Spring Boot Maven CRUD Example
 
-这是一个适合练习 GitHub Actions CI/CD 的 Spring Boot + Maven 项目。示例实现了 `Product` 的增删改查，使用 H2 内存数据库，不需要额外安装 MySQL。
+This project is a Spring Boot and Maven CRUD example for practicing GitHub Actions CI/CD. It implements CRUD operations for `Product` and uses an H2 in-memory database, so no MySQL installation is required.
 
-## 技术栈
+## Technology Stack
 
 - Java 8
 - Spring Boot 2.7
-- Spring Web、Spring Data JPA、Bean Validation
+- Spring Web, Spring Data JPA, and Bean Validation
 - H2 Database
-- JUnit 5、MockMvc
+- JUnit 5 and MockMvc
 - GitHub Actions
 
-## 本地运行
+## Run Locally
 
 ```bash
 mvn spring-boot:run
 ```
 
-应用启动后访问 `http://localhost:8080`。运行全部测试：
+After startup, visit `http://localhost:8080`. Run all tests and quality checks with:
 
 ```bash
 mvn clean verify
 ```
 
-`verify` 阶段还会执行 Checkstyle 静态检查。如果代码风格检查失败，Maven 构建会失败：
+The `verify` phase also runs Checkstyle. The Maven build fails when a code style violation is found:
 
 ```bash
 mvn checkstyle:check
 ```
 
-项目还使用 SpotBugs 和 PMD：
+The project also uses SpotBugs and PMD:
 
-- **Checkstyle**：检查代码格式、命名、导入和可读性规范
-- **SpotBugs**：基于字节码分析潜在缺陷，例如空指针、错误的资源使用和可疑代码
-- **PMD**：基于源码规则检查常见错误和不良实践
+- **Checkstyle**: checks code formatting, naming, imports, and readability rules
+- **SpotBugs**: analyzes bytecode for potential defects such as null pointer risks, incorrect resource usage, and suspicious code
+- **PMD**: analyzes source code for common errors and poor practices
 
-这三个工具都绑定在 `verify` 阶段，因此完整检查命令会同时执行测试、Checkstyle、SpotBugs 和 PMD：
+All three tools are bound to the `verify` phase, so the complete command runs tests, Checkstyle, SpotBugs, and PMD:
 
 ```bash
 mvn clean verify
 ```
 
-也可以单独运行：
+They can also be run individually:
 
 ```bash
 mvn checkstyle:check
@@ -49,19 +49,19 @@ mvn spotbugs:check
 mvn pmd:check
 ```
 
-任何工具发现达到阻断级别的问题，Maven 都会返回失败，GitHub Actions 也会失败。
+If a tool finds a blocking issue, Maven returns a failure and GitHub Actions fails as well.
 
 ## API
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/products` | 查询全部商品 |
-| GET | `/api/products/{id}` | 查询单个商品 |
-| POST | `/api/products` | 创建商品 |
-| PUT | `/api/products/{id}` | 更新商品 |
-| DELETE | `/api/products/{id}` | 删除商品 |
+| GET | `/api/products` | List all products |
+| GET | `/api/products/{id}` | Find one product |
+| POST | `/api/products` | Create a product |
+| PUT | `/api/products/{id}` | Update a product |
+| DELETE | `/api/products/{id}` | Delete a product |
 
-创建或更新时，请求体示例：
+Example request body for creating or updating a product:
 
 ```json
 {
@@ -71,25 +71,29 @@ mvn pmd:check
 }
 ```
 
-约束：`name` 不能为空且不超过 100 个字符，`price` 必须大于 0，`description` 不超过 500 个字符。
+Validation rules: `name` is required and must be at most 100 characters, `price` must be greater than 0, and `description` must be at most 500 characters.
 
-## GitHub Actions CI
+## GitHub Actions CI/CD
 
-`.github/workflows/cicd.yml` 会在推送到 `main` 或创建针对 `main` 的 Pull Request 时触发，依次完成：
+`.github/workflows/cicd.yml` runs on pushes to `main` and pull requests targeting `main`. It:
 
-1. 检出代码
-2. 使用 Temurin Java 8，并缓存 Maven 依赖
-3. 执行 `mvn --batch-mode verify`，编译代码并运行测试
+1. Checks out the source code
+2. Sets up Temurin Java 8 and caches Maven dependencies
+3. Runs `mvn --batch-mode verify`, which compiles the project, runs tests, and performs static analysis
+4. Uploads the JAR and deployment scripts to the Azure VM
+5. Runs the deployment script over SSH
 
-你可以在 GitHub 仓库的 **Actions** 页面查看每次构建结果。这个项目先聚焦 CI；后续可以在 CI 通过后增加 Docker 镜像发布或部署到云平台的 CD job。
+Build results are available on the repository's **Actions** page.
 
-`checkstyle.xml` 定义了当前项目的代码规范，例如缩进、空白字符、导入、命名、花括号和单行长度。SpotBugs 与 PMD 使用 Maven 插件提供的规则集；实际团队通常会根据误报情况维护项目自己的规则集和排除配置。
+## Deployment
 
-部署脚本使用 systemd 管理 Java 进程：JAR 位于远程服务器的 `app` 目录，service 文件安装到 `/etc/systemd/system/product-crud.service`。systemd 会负责进程重启和开机自启，应用日志进入 journald，不再和 JAR 文件放在同一目录。
+The deployment script uses systemd to manage the Java process. The JAR is stored in the remote server's `app` directory, and the service file is installed at `/etc/systemd/system/product-crud.service`. systemd handles process restarts and startup after reboot; application logs are managed by journald instead of being stored beside the JAR.
 
-登录服务器后可以使用以下命令查看服务和日志：
+Use these commands on the server to inspect the service and follow its logs:
 
 ```bash
 sudo systemctl status product-crud
 sudo journalctl -u product-crud -f
 ```
+
+`checkstyle.xml` defines the project's style rules, including indentation, whitespace, imports, naming, braces, and line length. SpotBugs and PMD use Maven plugin rule sets; teams commonly maintain project-specific rules and exclusions based on false-positive findings.

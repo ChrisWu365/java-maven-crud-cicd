@@ -23,8 +23,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 单元测试：不启动 Spring 容器、不连接数据库，只使用 Mockito 模拟 Repository，
- * 独立验证 ProductService 的业务逻辑，因此执行速度快、失败定位清晰。
+ * Unit test: does not start the Spring container or connect to a database. It uses a Mockito
+ * Repository mock to verify ProductService business logic in isolation, making it fast and easy to diagnose.
  */
 @ExtendWith(MockitoExtension.class)
 class ProductServiceUnitTest {
