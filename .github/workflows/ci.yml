@@ -1,4 +1,4 @@
-name: Java CI
+name: Java CI/CD to Azure VM
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -21,5 +21,51 @@ jobs:
           distribution: temurin
           java-version: '8'
           cache: maven
+
+      # CI phase: Lint and test
       - name: Lint and test
         run: mvn --batch-mode verify
+
+      # CD phase 1: upload the artifact to Azure VM via SCP protocol
+      - name: Copy Jar via SSH
+        uses: appleboy/scp-action@v0.1.3
+        with:
+          host: ${{ secrets.AZURE_VM_IP }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_KEY }}
+          port: 22
+          source: "target/*.jar"
+          target: "/home/${{ secrets.AZURE_VM_USER }}/app/"
+          strip_components: 0
+
+      # CD phase 2: log onto Azure VM, kill the old java process, and deploy the new artifact
+      - name: Execute remote SSH commands
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.AZURE_VM_IP }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_KEY }}
+          port: 22
+          script: |
+            # Check if Java is installed, and install Java 8 if not
+            if ! type java >/dev/null 2>&1; then
+              echo "Java is not installed. Installing Java 8..."
+              sudo apt-get update
+              sudo apt-get install -y openjdk-8-jdk
+            else
+              echo "Java is already installed."
+            fi
+            
+            # Kill the old java process if it exists
+            PID=$(pgrep -f 'java -jar /home/${{ secrets.AZURE_VM_USER }}/app/')
+            if [ -n "$PID" ]; then
+              echo "Killing old Java process with PID: $PID"
+              kill -9 $PID
+            else
+              echo "No existing Java process found."
+            fi
+
+            # Start the new application in the background
+            mv /home/${{ secrets.AZURE_VM_USER }}/app/*.jar /home/${{ secrets.AZURE_VM_USER }}/app/app.jar
+            nohup java -jar /home/${{ secrets.AZURE_VM_USER }}/app/*.jar > /home/${{ secrets.AZURE_VM_USER }}/app/app.log 2>&1 &
+            echo "New application started successfully."
