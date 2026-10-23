@@ -1,0 +1,15 @@
+[Unit]
+Description=Product CRUD Spring Boot application
+After=network.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+WorkingDirectory=@APP_DIR@
+ExecStart=/usr/bin/java -jar @APP_DIR@/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

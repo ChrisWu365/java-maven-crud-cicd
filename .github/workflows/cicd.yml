@@ -34,7 +34,7 @@ jobs:
           username: ${{ secrets.AZURE_VM_USER }}
           key: ${{ secrets.AZURE_VM_KEY }}
           port: 22
-          source: "target/*.jar,scripts/deploy.sh"
+          source: "target/*.jar,scripts/deploy.sh,scripts/product-crud.service"
           target: "/home/${{ secrets.AZURE_VM_USER }}/app/"
           strip_components: 1
 
