@@ -26,7 +26,7 @@ jobs:
       - name: Lint and test
         run: mvn --batch-mode verify
 
-      # CD phase 1: upload the artifact to Azure VM via SCP protocol
+      # CD phase 1: upload the artifact and deployment script to Azure VM
       - name: Copy Jar via SSH
         uses: appleboy/scp-action@v0.1.3
         with:
@@ -34,11 +34,11 @@ jobs:
           username: ${{ secrets.AZURE_VM_USER }}
           key: ${{ secrets.AZURE_VM_KEY }}
           port: 22
-          source: "target/*.jar"
+          source: "target/*.jar,scripts/deploy.sh"
           target: "/home/${{ secrets.AZURE_VM_USER }}/app/"
           strip_components: 1
 
-      # CD phase 2: log onto Azure VM, kill the old java process, and deploy the new artifact
+      # CD phase 2: invoke the version-controlled deployment script
       - name: Execute remote SSH commands
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -47,26 +47,5 @@ jobs:
           key: ${{ secrets.AZURE_VM_KEY }}
           port: 22
           script: |
-            # Check if Java is installed, and install Java 8 if not
-            if ! type java >/dev/null 2>&1; then
-              echo "Java is not installed. Installing Java 8..."
-              sudo apt-get update
-              sudo apt-get install -y openjdk-8-jdk
-            else
-              echo "Java is already installed."
-              echo "Java version: $(java -version 2>&1 | head -n 1)"
-            fi
-            
-            # Kill the old java process if it exists
-            PID=$(pgrep -f 'java -jar /home/${{ secrets.AZURE_VM_USER }}/app/')
-            if [ -n "$PID" ]; then
-              echo "Killing old Java process with PID: $PID"
-              kill -9 $PID
-            else
-              echo "No existing Java process found."
-            fi
-
-            # Start the new application in the background
-            mv /home/${{ secrets.AZURE_VM_USER }}/app/*.jar /home/${{ secrets.AZURE_VM_USER }}/app/app.jar
-            nohup java -jar /home/${{ secrets.AZURE_VM_USER }}/app/*.jar > /home/${{ secrets.AZURE_VM_USER }}/app/app.log 2>&1 &
-            echo "New application started successfully."
+            APP_DIR="/home/${{ secrets.AZURE_VM_USER }}/app"
+            bash "${APP_DIR}/deploy.sh" "${APP_DIR}"
