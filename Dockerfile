@@ -10,7 +10,10 @@ RUN mvn --batch-mode clean package -DskipTests
 FROM eclipse-temurin:8-jre-jammy
 
 WORKDIR /app
-RUN useradd --system --create-home --uid 10001 appuser
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home --uid 10001 appuser
 COPY --from=build /workspace/target/*.jar /app/app.jar
 
 USER 10001

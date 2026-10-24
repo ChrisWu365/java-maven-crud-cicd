@@ -99,4 +99,11 @@ class ProductControllerIntegrationTest {
                 .andExpect(jsonPath("$.info.title", is("Product CRUD API")));
     }
 
+    @Test
+    void shouldExposeActuatorHealthEndpoint() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("UP")));
+    }
+
 }

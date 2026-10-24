@@ -142,6 +142,8 @@ docker compose down
 
 The API is available at `http://localhost:8080/api/products`. Container logs are written to standard output and can be viewed with `docker logs` or `docker compose logs`; the application does not write logs beside the JAR.
 
+The application exposes the Spring Boot Actuator health endpoint at `http://localhost:8080/actuator/health`. Only the health endpoint is exposed through the management web interface. The Compose healthcheck uses this endpoint, and the remote deployment script retries the endpoint from the VM for up to 60 seconds before failing the deployment.
+
 On pushes to `main`, GitHub Actions first runs tests and static analysis, then builds and pushes an immutable `sha-<commit>` image and `latest` to GitHub Container Registry (GHCR). The deploy job logs in to GHCR on the Azure VM, pulls the immutable image, and recreates the container with Docker Compose. Pull requests run CI only and never deploy.
 
 Before using the Docker CD job, install Docker Engine and the Docker Compose v2 plugin on the Azure VM. The GHCR package must be readable by the VM; for a private package, the workflow uses `GITHUB_TOKEN` through the remote deployment script. Configure database connection settings with environment variables or deployment secrets rather than committing credentials to `docker-compose.yml`.
