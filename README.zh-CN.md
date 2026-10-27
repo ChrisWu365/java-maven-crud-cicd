@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 这是一个用于练习 GitHub Actions CI/CD 的 Spring Boot CRUD 项目。应用提供
-`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL。
+`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL等数据库。
 
 ## 目录
 
