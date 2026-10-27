@@ -234,13 +234,23 @@ kubectl get nodes -o wide
 
 ## GitHub Actions CI/CD
 
-The workflow is `.github/workflows/cicd.yml`:
+The workflow is `.github/workflows/cicd.yml`. The branch-to-environment mapping
+is:
 
-1. Pull requests and pushes to `main` run Maven tests and static analysis.
-2. Pushes to `main` and manual runs build and publish the GHCR image.
-3. Pushes to `main` deploy to Kubernetes by default; manual runs can choose Kubernetes or Docker.
+| Branch | GitHub Environment | Behavior |
+| --- | --- | --- |
+| `dev` | `development` | CI on pull requests; build, publish, and deploy on push |
+| `staging` | `staging` | CI on pull requests; build, publish, and deploy on push |
+| `main` | `production` | CI on pull requests; build and publish on push, then wait for environment approval before deployment |
 
-Configure these repository secrets:
+Pull requests never deploy. Configure `production` with required reviewers in
+**Settings -> Environments -> production**; the workflow's deployment job then
+pauses until an authorized reviewer approves it. Use environment-level secrets
+with the same names listed below so each environment can use its own host and
+GHCR credentials. Manual runs can still choose Kubernetes or Docker.
+
+Configure these secrets in each GitHub Environment (using the same names so the
+workflow can select the values for the target branch):
 
 | Secret | Purpose |
 | --- | --- |

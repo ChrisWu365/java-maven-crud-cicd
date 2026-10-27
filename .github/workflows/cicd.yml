@@ -2,9 +2,9 @@ name: Java CI/CD with Docker
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "dev", "staging", "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "dev", "staging", "main" ]
   workflow_dispatch:
     inputs:
       deploy_target:
@@ -41,7 +41,7 @@ jobs:
 
   publish:
     name: Publish Docker image
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     needs: ci
     runs-on: ubuntu-latest
     permissions:
@@ -120,9 +120,14 @@ jobs:
 
   deploy-kubernetes:
     name: Deploy to Kubernetes
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes')
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'))
     needs: publish
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
+    concurrency:
+      group: deployment-${{ github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: read
