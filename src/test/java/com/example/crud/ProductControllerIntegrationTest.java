@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration test: starts the complete Spring application context and uses the real Controller,
  * Service, Repository, and H2 database to verify HTTP behavior and component collaboration through MockMvc.
  */
-@SpringBootTest
+@SpringBootTest(properties = "management.metrics.export.prometheus.enabled=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ProductControllerIntegrationTest {
@@ -104,6 +105,14 @@ class ProductControllerIntegrationTest {
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", is("UP")));
+    }
+
+    @Test
+    void shouldExposePrometheusMetricsEndpoint() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("jvm_memory_used_bytes")));
     }
 
 }

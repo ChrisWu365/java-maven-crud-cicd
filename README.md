@@ -7,6 +7,7 @@ This project is a Spring Boot and Maven CRUD example for practicing GitHub Actio
 - Java 8
 - Spring Boot 2.7
 - Spring Web, Spring Data JPA, and Bean Validation
+- Spring Boot Actuator and Micrometer Prometheus metrics
 - H2 Database
 - JUnit 5 and MockMvc
 - GitHub Actions
@@ -142,7 +143,21 @@ docker compose down
 
 The API is available at `http://localhost:8080/api/products`. Container logs are written to standard output and can be viewed with `docker logs` or `docker compose logs`; the application does not write logs beside the JAR.
 
-The application exposes the Spring Boot Actuator health endpoint at `http://localhost:8080/actuator/health`. Only the health endpoint is exposed through the management web interface. The Compose healthcheck uses this endpoint, and the remote deployment script retries the endpoint from the VM for up to 60 seconds before failing the deployment.
+The application exposes the Spring Boot Actuator health endpoint at `http://localhost:8080/actuator/health` and the Prometheus metrics endpoint at `http://localhost:8080/actuator/prometheus`. The Compose healthcheck uses the health endpoint, and the remote deployment script retries it from the VM for up to 60 seconds before failing the deployment. The Prometheus endpoint is intended to be reachable only from the monitoring VM; restrict port 8080 in the Azure NSG and the application VM firewall to the monitoring VM's private IP rather than exposing it publicly.
+
+### Prometheus scraping
+
+On the Prometheus/Grafana VM, add a scrape job similar to this to `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: product-crud
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["<application-vm-private-ip>:8080"]
+```
+
+Reload Prometheus, then confirm the target is `UP` in its **Status -> Targets** page. Grafana can use Prometheus as a data source and visualize the standard JVM, HTTP server, and process metrics exposed by the application.
 
 On pushes to `main`, GitHub Actions first runs tests and static analysis, then builds and pushes an immutable `sha-<commit>` image and `latest` to GitHub Container Registry (GHCR). The deploy job logs in to GHCR on the Azure VM, pulls the immutable image, and recreates the container with Docker Compose. Pull requests run CI only and never deploy.
 
