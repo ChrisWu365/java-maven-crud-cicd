@@ -33,11 +33,26 @@ if [ -z "${K8S_USER}" ] || ! id "${K8S_USER}" >/dev/null 2>&1; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-swapoff -a
-sed -ri '/\sswap\s/s/^/#/' /etc/fstab
+if swapon --noheadings --show | grep -q .; then
+  swapoff -a
+  sed -ri '/\sswap\s/s/^/#/' /etc/fstab
+fi
 
-apt-get update
-apt-get install -y ca-certificates curl gpg apt-transport-https containerd kmod
+required_packages="ca-certificates curl gpg apt-transport-https kmod"
+if ! command -v containerd >/dev/null 2>&1; then
+  required_packages="${required_packages} containerd"
+fi
+missing_packages=""
+for package in ${required_packages}; do
+  if ! dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | \
+    grep -q "install ok installed"; then
+    missing_packages="${missing_packages} ${package}"
+  fi
+done
+if [ -n "${missing_packages}" ]; then
+  apt-get update
+  apt-get install -y ${missing_packages}
+fi
 
 cat > /etc/modules-load.d/k8s.conf <<'EOF'
 overlay
@@ -54,19 +69,36 @@ EOF
 sysctl --system
 
 mkdir -p /etc/containerd
-containerd config default > /etc/containerd/config.toml
-sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+if [ ! -s /etc/containerd/config.toml ]; then
+  containerd config default > /etc/containerd/config.toml
+fi
+if grep -q 'SystemdCgroup = false' /etc/containerd/config.toml; then
+  sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+fi
 systemctl enable --now containerd
-systemctl restart containerd
+if systemctl is-active --quiet containerd; then
+  systemctl restart containerd
+fi
 
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL "https://pkgs.k8s.io/core:/stable:/${K8S_MINOR_VERSION}/deb/Release.key" \
-  | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+if [ ! -s /etc/apt/keyrings/kubernetes-apt-keyring.gpg ]; then
+  curl -fsSL "https://pkgs.k8s.io/core:/stable:/${K8S_MINOR_VERSION}/deb/Release.key" \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+fi
 printf 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/%s/deb/ /\n' \
   "${K8S_MINOR_VERSION}" > /etc/apt/sources.list.d/kubernetes.list
 
-apt-get update
-apt-get install -y kubelet kubeadm kubectl
+missing_kubernetes_packages=""
+for package in kubelet kubeadm kubectl; do
+  if ! dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | \
+    grep -q "install ok installed"; then
+    missing_kubernetes_packages="${missing_kubernetes_packages} ${package}"
+  fi
+done
+if [ -n "${missing_kubernetes_packages}" ]; then
+  apt-get update
+  apt-get install -y ${missing_kubernetes_packages}
+fi
 apt-mark hold kubelet kubeadm kubectl
 systemctl enable kubelet
 

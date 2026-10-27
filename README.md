@@ -1,79 +1,67 @@
 # Spring Boot Maven CRUD Example
 
-This project is a Spring Boot and Maven CRUD example for practicing GitHub Actions CI/CD. It implements CRUD operations for `Product` and uses an H2 in-memory database, so no MySQL installation is required.
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-## Technology Stack
+This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
+It provides create, read, update, and delete operations for `Product` records and
+uses an H2 in-memory database, so MySQL is not required.
 
-- Java 8
-- Spring Boot 2.7
+## Contents
+
+- [Technology stack](#technology-stack)
+- [Run locally](#run-locally)
+- [API](#api)
+- [Deployment options](#deployment-options)
+- [GitHub Actions CI/CD](#github-actions-cicd)
+- [Monitoring](#monitoring)
+- [Troubleshooting](#troubleshooting)
+
+## Technology stack
+
+- Java 8 and Spring Boot 2.7
 - Spring Web, Spring Data JPA, and Bean Validation
-- Spring Boot Actuator and Micrometer Prometheus metrics
-- H2 Database
-- JUnit 5 and MockMvc
-- GitHub Actions
-- Springdoc OpenAPI / Swagger UI
+- Spring Boot Actuator and Micrometer Prometheus
+- H2, JUnit 5, and MockMvc
+- Docker, Docker Compose, and Kubernetes
+- GitHub Actions and GitHub Container Registry (GHCR)
 
-## Run Locally
+## Run locally
+
+Requirements: Java 8 and Maven.
 
 ```bash
 mvn spring-boot:run
 ```
 
-After startup, visit `http://localhost:8080`. Run all tests and quality checks with:
+The application listens on port `8080`. The default profile is `local`, with
+Swagger UI and the OpenAPI document available at:
+
+- http://localhost:8080/swagger-ui.html
+- http://localhost:8080/v3/api-docs
+
+Select another profile explicitly:
 
 ```bash
-mvn clean verify
-```
-
-The default local profile is `local`. Swagger UI is available at `http://localhost:8080/swagger-ui.html`, and the OpenAPI document is available at `http://localhost:8080/v3/api-docs`.
-
-Profiles can be selected explicitly:
-
-```bash
-mvn spring-boot:run -Dspring-boot.run.profiles=local
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 mvn spring-boot:run -Dspring-boot.run.profiles=test
-java -jar target/product-crud-0.0.1-SNAPSHOT.jar --spring.profiles.active=staging
 java -jar target/product-crud-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 ```
 
-The project defines five profiles:
+| Profile | Purpose | Swagger |
+| --- | --- | --- |
+| `local` | Local development with H2 | Enabled |
+| `dev` | Shared development environment | Enabled |
+| `test` | Automated tests | Enabled |
+| `staging` | Production-like environment | Disabled |
+| `prod` | Production deployment | Disabled |
 
-- `local`: local development with H2 and Swagger enabled
-- `dev`: shared development environment with Swagger enabled
-- `test`: automated tests with Swagger enabled
-- `staging`: production-like environment with an external database and Swagger disabled
-- `prod`: production environment with Swagger disabled
-
-Swagger UI and OpenAPI endpoints are enabled only for `local`, `dev`, and `test`. They are explicitly disabled for `staging` and `prod`. The systemd deployment service sets `SPRING_PROFILES_ACTIVE=prod`.
-
-The `verify` phase also runs Checkstyle. The Maven build fails when a code style violation is found:
-
-```bash
-mvn checkstyle:check
-```
-
-The project also uses SpotBugs and PMD:
-
-- **Checkstyle**: checks code formatting, naming, imports, and readability rules
-- **SpotBugs**: analyzes bytecode for potential defects such as null pointer risks, incorrect resource usage, and suspicious code
-- **PMD**: analyzes source code for common errors and poor practices
-
-All three tools are bound to the `verify` phase, so the complete command runs tests, Checkstyle, SpotBugs, and PMD:
+Run tests and all quality checks with:
 
 ```bash
 mvn clean verify
 ```
 
-They can also be run individually:
-
-```bash
-mvn checkstyle:check
-mvn spotbugs:check
-mvn pmd:check
-```
-
-If a tool finds a blocking issue, Maven returns a failure and GitHub Actions fails as well.
+This runs tests, Checkstyle, SpotBugs, and PMD.
 
 ## API
 
@@ -85,7 +73,7 @@ If a tool finds a blocking issue, Maven returns a failure and GitHub Actions fai
 | PUT | `/api/products/{id}` | Update a product |
 | DELETE | `/api/products/{id}` | Delete a product |
 
-Example request body for creating or updating a product:
+Example request body for create and update operations:
 
 ```json
 {
@@ -95,25 +83,22 @@ Example request body for creating or updating a product:
 }
 ```
 
-Validation rules: `name` is required and must be at most 100 characters, `price` must be greater than 0, and `description` must be at most 500 characters.
+Validation rules: `name` is required and limited to 100 characters, `price`
+must be greater than zero, and `description` is limited to 500 characters.
 
-The controller and `Product` model use OpenAPI annotations to document operation summaries, parameters, response codes, validation fields, and example values in Swagger UI.
+## Deployment options
 
-## Deployment
-
-The deployment examples are deliberately separated so the same application can be operated in three common ways:
-
-| Method | Files | Runtime | Best for |
+| Option | Entry point | Runtime | Best for |
 | --- | --- | --- | --- |
-| Manual JAR | `scripts/manual/` | Java + systemd | Learning the host process model |
-| Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | A simple single-VM container deployment |
-| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Kubernetes Deployment + NodePort | Practising container orchestration and rolling updates |
+| Manual JAR | `scripts/manual/` | Java + systemd | Learning host-process deployment |
+| Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | Single-VM container deployment |
+| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Deployment + NodePort | Container orchestration and rolling updates |
 
-The Docker image is built once by GitHub Actions and published to GHCR. Both Docker and Kubernetes deployment paths consume the immutable `sha-<commit>` image, so the runtime does not build different code from the CI artifact.
+GitHub Actions builds the Docker image and publishes it to GHCR. Docker and
+Kubernetes deployments use the immutable `sha-<commit>` tag; deployment hosts
+do not build a different application artifact.
 
 ### 1. Manual JAR deployment
-
-Build the application locally, copy the JAR and the manual deployment files to an Ubuntu VM, then run:
 
 ```bash
 mvn clean package -DskipTests
@@ -122,16 +107,16 @@ scp scripts/manual/deploy.sh scripts/manual/product-crud.service <user>@<vm>:/ho
 ssh <user>@<vm> 'bash /home/<user>/app/deploy.sh /home/<user>/app'
 ```
 
-The script installs Java 8 if needed, installs a systemd unit, and enables restart after failure or reboot. Inspect it with:
+Check the service:
 
 ```bash
 sudo systemctl status product-crud
 sudo journalctl -u product-crud -f
 ```
 
-### 2. Docker deployment
+### 2. Docker Compose deployment
 
-The multi-stage `Dockerfile` builds a Java 8 image and runs it as a non-root user. To run locally:
+Run locally:
 
 ```bash
 docker compose -f deployment/docker/docker-compose.yml up --build -d
@@ -139,29 +124,39 @@ docker compose -f deployment/docker/docker-compose.yml logs -f product-crud
 docker compose -f deployment/docker/docker-compose.yml down
 ```
 
-For an Ubuntu VM, install Docker with:
+On a new Ubuntu Docker host, run once:
 
 ```bash
 sudo bash scripts/docker/install-docker-ubuntu.sh
 ```
 
-The remote deployment script is `scripts/docker/deploy-docker.sh <app-directory> <image-reference>`. It logs in to GHCR, pulls the immutable image, recreates the Compose service, and waits for `/actuator/health`.
+The script is safe to rerun: installed apt packages are skipped and the Docker
+repository and service are reused. Log out and back in after being added to the
+`docker` group.
 
-### 3. Kubernetes + Docker deployment
-
-This is the recommended learning path for the three-VM exercise:
+The remote deployment script is:
 
 ```text
-VM 1: Kubernetes control-plane
-VM 2: Kubernetes worker running product-crud
-VM 3: Prometheus + Grafana
+scripts/docker/deploy-docker.sh <app-directory> <image-reference>
 ```
 
-The application is still a Docker image, but Kubernetes manages its desired state. The manifests in `deployment/kubernetes/` create one replica and expose port `30080` on each Kubernetes node. The deployment uses Actuator readiness and liveness probes and requests a small CPU/memory budget.
+It logs in to GHCR, pulls the immutable image, recreates the Compose service,
+and waits for `/actuator/health`.
 
-#### Prepare the Kubernetes VM
+### 3. Kubernetes deployment
 
-The GitHub Actions SSH step only deploys to an existing cluster; it does not install Kubernetes. On a new Ubuntu Kubernetes VM, copy or clone this repository and run the one-time setup script as the SSH user that will later be used by `K8S_VM_USER`:
+Kubernetes nodes use **containerd**; Docker is not required. Install Docker on
+the same host only when Docker Compose is also needed. If both are installed,
+verify that the container runtime remains healthy:
+
+```bash
+systemctl status containerd kubelet
+```
+
+#### Single-node control plane and worker
+
+On the Ubuntu user that will later be used by the CI SSH connection, copy this
+repository to the server and run:
 
 ```bash
 sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
@@ -169,66 +164,99 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
-For this learning project, `--init-control-plane` creates a single-node cluster, installs `containerd`, `kubeadm`, `kubelet`, and `kubectl`, installs Flannel as the pod network, and allows workloads to run on the control-plane node. This is intentionally simple and is not highly available. For a two-VM cluster, initialize the control-plane on one VM, run the printed `kubeadm join ...` command on the worker, and do not remove the worker's scheduling taint.
+The script installs containerd, kubeadm, kubelet, kubectl, and Flannel; creates
+the cluster; and removes the control-plane `NoSchedule` taint so the same node
+can run application workloads. It is idempotent: installed dependencies are
+skipped and an existing `/etc/kubernetes/admin.conf` prevents a second
+`kubeadm init`.
 
-The setup script also enables the required Linux bridge and IPv4 forwarding settings. If a previous `kubeadm init` stopped during pre-flight checks, fix the host and run the same command again; do not use `--ignore-preflight-errors`:
+To install packages without initializing a cluster:
 
 ```bash
-sysctl net.ipv4.ip_forward
-# Expected: net.ipv4.ip_forward = 1
-sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
+sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh
 ```
 
-The script defaults to Kubernetes package stream `v1.30`; change it if your cluster uses another supported stream:
+For a multi-node cluster, initialize the control plane, save the printed
+`kubeadm join ...` command, and run it on each worker. Do not remove worker
+taints in a multi-node production setup.
+
+Important prerequisites:
+
+- Ubuntu with apt and systemd; run the script with `sudo`.
+- The CI SSH user must be able to run `kubectl cluster-info`.
+- The default Pod CIDR is `10.244.0.0/16`; set `POD_NETWORK_CIDR` if it conflicts.
+- The default Kubernetes package stream is `v1.30`; set `K8S_MINOR_VERSION` to change it.
+- The script disables swap and configures bridge filtering, IPv4 forwarding, and systemd cgroups.
+- Allow SSH and TCP `30080` in the cloud security group and host firewall.
+
+Verify the node:
 
 ```bash
-sudo K8S_MINOR_VERSION=v1.31 bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
-```
-
-The SSH user must have a working kubeconfig at `~/.kube/config`, because the CI/CD job runs `kubectl` as that user. Check this before configuring GitHub Actions:
-
-```bash
+kubectl config current-context
 kubectl cluster-info
-kubectl get nodes
+kubectl get nodes -o wide
+kubectl get pods -A
+systemctl status containerd kubelet --no-pager
 ```
 
-If these commands fail, the workflow will stop with the same error rather than attempting an application deployment.
+#### Manually deploy the Kubernetes application
 
-#### Deploy the application
-
-The deployment script creates a namespace and a GHCR pull secret from environment variables, applies the manifests, and waits for the rollout:
+The deployment script creates the namespace, GHCR pull secret, Deployment, and
+Service:
 
 ```bash
 export GHCR_USERNAME=<github-username>
-export GHCR_TOKEN=<read-package-token>
-bash scripts/kubernetes/deploy-kubernetes.sh /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
+export GHCR_TOKEN=<read-packages-pat>
+bash scripts/kubernetes/deploy-kubernetes.sh \
+  /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
-For production, use a managed identity, an external secret store, or a carefully scoped long-lived registry credential rather than storing credentials in YAML. This example keeps the mechanism visible for learning.
+`GHCR_TOKEN` requires at least `read:packages`. Do not use the short-lived
+`GITHUB_TOKEN` as a long-lived Kubernetes image-pull secret.
 
-### GitHub Actions CI/CD
+#### Access the Kubernetes service
 
-`.github/workflows/cicd.yml` runs CI on pull requests and pushes to `main`. A push to `main` runs:
+The Service uses NodePort `30080`. Replace `<K8S_VM_IP>` with the node's public
+or private IP:
 
-1. Maven tests and Checkstyle, SpotBugs, and PMD
-2. Docker build and push to GHCR with `sha-<commit>` and `latest` tags
-3. SSH deployment to Kubernetes by default
+```bash
+curl http://<K8S_VM_IP>:30080/actuator/health
+curl http://<K8S_VM_IP>:30080/api/products
+```
 
-Use **Actions -> Java CI/CD with Docker -> Run workflow** to choose `kubernetes` or `docker`. The manual workflow dispatch is useful for comparing both runtime paths without changing the application code.
+If external access fails, check the cloud security group and host firewall:
+
+```bash
+sudo ufw allow 30080/tcp
+kubectl -n product-crud get service product-crud
+kubectl get nodes -o wide
+```
+
+## GitHub Actions CI/CD
+
+The workflow is `.github/workflows/cicd.yml`:
+
+1. Pull requests and pushes to `main` run Maven tests and static analysis.
+2. Pushes to `main` and manual runs build and publish the GHCR image.
+3. Pushes to `main` deploy to Kubernetes by default; manual runs can choose Kubernetes or Docker.
 
 Configure these repository secrets:
 
-| Secrets | Used by |
+| Secret | Purpose |
 | --- | --- |
-| `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Default Kubernetes deployment |
-| `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Persistent GHCR pull secret for Kubernetes |
-| `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Optional Docker Compose deployment |
+| `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Kubernetes SSH deployment |
+| `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
+| `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
 
-Use a narrowly scoped GHCR token with package read permission for `K8S_GHCR_TOKEN`; do not use the short-lived `GITHUB_TOKEN` for a Kubernetes pull secret that must survive a later pod reschedule. Restrict SSH and Kubernetes NodePort access with Azure NSGs. The monitoring VM should be the only host allowed to reach the application metrics endpoint.
+The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
+image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
+private GHCR package, the PAT needs `read:packages`; if the organization uses
+SSO, authorize the PAT for SSO as well.
 
-### Prometheus and Grafana
+## Monitoring
 
-For Docker, scrape `<application-vm-private-ip>:8080`. For Kubernetes, scrape a Kubernetes node private IP on port `30080`:
+The application exposes `/actuator/prometheus`. Example static Prometheus
+configuration for Kubernetes:
 
 ```yaml
 scrape_configs:
@@ -238,8 +266,60 @@ scrape_configs:
       - targets: ["<kubernetes-node-private-ip>:30080"]
 ```
 
-Confirm the target is `UP` in Prometheus **Status -> Targets**, then use Prometheus as the Grafana data source. The application exposes standard JVM, HTTP server, process, and Hikari metrics. In a larger Kubernetes setup, the usual next step is Prometheus Operator or `kube-prometheus-stack`, but a static target is intentionally used here to make the fundamentals clear.
+Confirm that the target is `UP` under **Prometheus -> Status -> Targets**, then
+add Prometheus as a Grafana data source. In production, restrict the metrics
+endpoint to the monitoring host.
 
-The application API remains available at `/api/products`; health and metrics are available at `/actuator/health` and `/actuator/prometheus`.
+## Troubleshooting
 
-`checkstyle.xml` defines the project's style rules, including indentation, whitespace, imports, naming, braces, and line length. SpotBugs and PMD use Maven plugin rule sets; teams commonly maintain project-specific rules and exclusions based on false-positive findings.
+### kubectl cannot connect to the cluster
+
+```bash
+kubectl config current-context
+kubectl cluster-info
+kubectl get nodes
+```
+
+Make sure these commands run as the SSH user whose `~/.kube/config` is used by
+the CI deployment, not as a different user or root.
+
+### ImagePullBackOff
+
+```bash
+kubectl -n product-crud get secret ghcr-credentials
+kubectl -n product-crud describe pod -l app=product-crud
+kubectl -n product-crud get deployment product-crud \
+  -o=jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
+Confirm that the Secret exists in the same namespace, the PAT has
+`read:packages`, and the image tag exists in GHCR.
+
+### Pending
+
+Check node scheduling, available resources, and control-plane taints:
+
+```bash
+kubectl get nodes -o wide
+kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
+kubectl -n product-crud describe pod -l app=product-crud
+```
+
+### CrashLoopBackOff or readiness failures
+
+```bash
+kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=200
+kubectl -n product-crud describe pod -l app=product-crud
+```
+
+### progress deadline exceeded
+
+This is a summary error meaning that no Pod became Ready before the Deployment
+timeout. Inspect Pod events, container logs, and node status instead of only
+increasing the timeout:
+
+```bash
+kubectl -n product-crud describe deployment product-crud
+kubectl -n product-crud describe pod -l app=product-crud
+kubectl get nodes
+```

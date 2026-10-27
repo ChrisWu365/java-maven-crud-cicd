@@ -41,5 +41,19 @@ sed "s|IMAGE_REF|${IMAGE_REF}|g; s|namespace: product-crud|namespace: ${NAMESPAC
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
 
-kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=180s
+if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=180s; then
+  echo "Deployment rollout failed. Collecting Kubernetes diagnostics..." >&2
+  kubectl -n "${NAMESPACE}" get deployment/product-crud -o wide >&2 || true
+  kubectl -n "${NAMESPACE}" get pods -l app=product-crud -o wide >&2 || true
+  kubectl -n "${NAMESPACE}" describe deployment/product-crud >&2 || true
+  kubectl -n "${NAMESPACE}" describe pods -l app=product-crud >&2 || true
+  kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
+  for pod in $(kubectl -n "${NAMESPACE}" get pods -l app=product-crud \
+    -o jsonpath='{.items[*].metadata.name}'); do
+    echo "Logs for pod ${pod}:" >&2
+    kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers=true --tail=200 >&2 || true
+    kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers=true --previous --tail=200 >&2 || true
+  done
+  exit 1
+fi
 kubectl -n "${NAMESPACE}" get deployment,service,pods -o wide

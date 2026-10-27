@@ -25,18 +25,38 @@ if ! id "${DOCKER_USER}" >/dev/null 2>&1; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y ca-certificates curl
+missing_base_packages=""
+for package in ca-certificates curl; do
+  if ! dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | \
+    grep -q "install ok installed"; then
+    missing_base_packages="${missing_base_packages} ${package}"
+  fi
+done
+if [ -n "${missing_base_packages}" ]; then
+  apt-get update
+  apt-get install -y ${missing_base_packages}
+fi
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+if [ ! -s /etc/apt/keyrings/docker.asc ]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+fi
 chmod a+r /etc/apt/keyrings/docker.asc
 ARCH="$(dpkg --print-architecture)"
 CODENAME="$(. /etc/os-release && printf '%s' "${VERSION_CODENAME}")"
 cat > /etc/apt/sources.list.d/docker.list <<EOF
 deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable
 EOF
-apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+missing_docker_packages=""
+for package in docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; do
+  if ! dpkg-query -W -f='${Status}' "${package}" 2>/dev/null | \
+    grep -q "install ok installed"; then
+    missing_docker_packages="${missing_docker_packages} ${package}"
+  fi
+done
+if [ -n "${missing_docker_packages}" ]; then
+  apt-get update
+  apt-get install -y ${missing_docker_packages}
+fi
 systemctl enable --now docker
 usermod -aG docker "${DOCKER_USER}"
 docker --version
