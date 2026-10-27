@@ -4,7 +4,7 @@ set -eu
 
 APP_DIR="${1:?Usage: deploy-docker.sh <app-directory> <image-reference>}"
 IMAGE_REF="${2:?Usage: deploy-docker.sh <app-directory> <image-reference>}"
-COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
+COMPOSE_FILE="${APP_DIR}/deployment/docker/docker-compose.yml"
 HEALTH_URL="http://127.0.0.1:8080/actuator/health"
 HEALTH_ATTEMPTS=30
 HEALTH_INTERVAL_SECONDS=2
@@ -55,5 +55,4 @@ if [ "${healthy}" != "true" ]; then
 fi
 
 docker image prune --force
-
 echo "Deployed ${IMAGE_REF}; health check passed."

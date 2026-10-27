@@ -5,6 +5,16 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: Deployment target
+        required: true
+        default: kubernetes
+        type: choice
+        options:
+          - kubernetes
+          - docker
 
 permissions:
   contents: read
@@ -31,7 +41,7 @@ jobs:
 
   publish:
     name: Publish Docker image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: ci
     runs-on: ubuntu-latest
     permissions:
@@ -71,9 +81,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy container to Azure VM
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  deploy-docker:
+    name: Deploy with Docker Compose
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'docker'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
@@ -85,25 +95,62 @@ jobs:
       - name: Copy Docker deployment files
         uses: appleboy/scp-action@v1
         with:
-          host: ${{ secrets.AZURE_VM_IP }}
-          username: ${{ secrets.AZURE_VM_USER }}
-          key: ${{ secrets.AZURE_VM_KEY }}
+          host: ${{ secrets.DOCKER_VM_IP }}
+          username: ${{ secrets.DOCKER_VM_USER }}
+          key: ${{ secrets.DOCKER_VM_KEY }}
           port: 22
-          source: "docker-compose.yml,scripts/deploy-docker.sh"
-          target: "/home/${{ secrets.AZURE_VM_USER }}/app/"
+          source: "deployment/docker,scripts/docker"
+          target: "/home/${{ secrets.DOCKER_VM_USER }}/app/"
           strip_components: 0
       - name: Deploy image over SSH
         uses: appleboy/ssh-action@v1
         env:
-          APP_DIR: "/home/${{ secrets.AZURE_VM_USER }}/app"
+          APP_DIR: "/home/${{ secrets.DOCKER_VM_USER }}/app"
           IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          host: ${{ secrets.AZURE_VM_IP }}
-          username: ${{ secrets.AZURE_VM_USER }}
-          key: ${{ secrets.AZURE_VM_KEY }}
+          host: ${{ secrets.DOCKER_VM_IP }}
+          username: ${{ secrets.DOCKER_VM_USER }}
+          key: ${{ secrets.DOCKER_VM_KEY }}
           port: 22
           envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN
           script: |
-            bash "${APP_DIR}/scripts/deploy-docker.sh" "${APP_DIR}" "${IMAGE_REF}"
+            bash "${APP_DIR}/scripts/docker/deploy-docker.sh" "${APP_DIR}" "${IMAGE_REF}"
+
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v5
+      - name: Copy Kubernetes deployment files
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.K8S_VM_IP }}
+          username: ${{ secrets.K8S_VM_USER }}
+          key: ${{ secrets.K8S_VM_KEY }}
+          port: 22
+          source: "deployment/kubernetes,scripts/kubernetes"
+          target: "/home/${{ secrets.K8S_VM_USER }}/app/"
+          strip_components: 0
+      - name: Deploy image over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
+          IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
+          GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
+        with:
+          host: ${{ secrets.K8S_VM_IP }}
+          username: ${{ secrets.K8S_VM_USER }}
+          key: ${{ secrets.K8S_VM_KEY }}
+          port: 22
+          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN
+          script: |
+            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}"

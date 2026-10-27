@@ -99,88 +99,110 @@ Validation rules: `name` is required and must be at most 100 characters, `price`
 
 The controller and `Product` model use OpenAPI annotations to document operation summaries, parameters, response codes, validation fields, and example values in Swagger UI.
 
-## GitHub Actions CI/CD
-
-`.github/workflows/cicd.yml` runs on pushes to `main` and pull requests targeting `main`. It:
-
-1. Checks out the source code
-2. Sets up Temurin Java 8 and caches Maven dependencies
-3. Runs `mvn --batch-mode verify`, which compiles the project, runs tests, and performs static analysis
-4. Uploads the JAR and deployment scripts to the Azure VM
-5. Runs the deployment script over SSH
-
-Build results are available on the repository's **Actions** page.
-
 ## Deployment
 
-The deployment script uses systemd to manage the Java process. The JAR is stored in the remote server's `app` directory, and the service file is installed at `/etc/systemd/system/product-crud.service`. systemd handles process restarts and startup after reboot; application logs are managed by journald instead of being stored beside the JAR.
+The deployment examples are deliberately separated so the same application can be operated in three common ways:
 
-Use these commands on the server to inspect the service and follow its logs:
+| Method | Files | Runtime | Best for |
+| --- | --- | --- | --- |
+| Manual JAR | `scripts/manual/` | Java + systemd | Learning the host process model |
+| Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | A simple single-VM container deployment |
+| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Kubernetes Deployment + NodePort | Practising container orchestration and rolling updates |
+
+The Docker image is built once by GitHub Actions and published to GHCR. Both Docker and Kubernetes deployment paths consume the immutable `sha-<commit>` image, so the runtime does not build different code from the CI artifact.
+
+### 1. Manual JAR deployment
+
+Build the application locally, copy the JAR and the manual deployment files to an Ubuntu VM, then run:
+
+```bash
+mvn clean package -DskipTests
+scp target/product-crud-0.0.1-SNAPSHOT.jar <user>@<vm>:/home/<user>/app/
+scp scripts/manual/deploy.sh scripts/manual/product-crud.service <user>@<vm>:/home/<user>/app/
+ssh <user>@<vm> 'bash /home/<user>/app/deploy.sh /home/<user>/app'
+```
+
+The script installs Java 8 if needed, installs a systemd unit, and enables restart after failure or reboot. Inspect it with:
 
 ```bash
 sudo systemctl status product-crud
 sudo journalctl -u product-crud -f
 ```
 
-## Docker Deployment
+### 2. Docker deployment
 
-The project supports a GitHub Actions Docker CI/CD flow. The multi-stage `Dockerfile` builds the application with Maven and runs it in a smaller Java 8 JRE image as a non-root user. The container uses the `prod` profile, so Swagger remains disabled.
-
-Build and run the image:
+The multi-stage `Dockerfile` builds a Java 8 image and runs it as a non-root user. To run locally:
 
 ```bash
-docker build -t product-crud:local .
-docker run --name product-crud --restart unless-stopped -p 8080:8080 product-crud:local
+docker compose -f deployment/docker/docker-compose.yml up --build -d
+docker compose -f deployment/docker/docker-compose.yml logs -f product-crud
+docker compose -f deployment/docker/docker-compose.yml down
 ```
 
-Or use Docker Compose:
+For an Ubuntu VM, install Docker with:
 
 ```bash
-docker compose up --build -d
-docker compose logs -f product-crud
-docker compose down
+sudo bash scripts/docker/install-docker-ubuntu.sh
 ```
 
-The API is available at `http://localhost:8080/api/products`. Container logs are written to standard output and can be viewed with `docker logs` or `docker compose logs`; the application does not write logs beside the JAR.
+The remote deployment script is `scripts/docker/deploy-docker.sh <app-directory> <image-reference>`. It logs in to GHCR, pulls the immutable image, recreates the Compose service, and waits for `/actuator/health`.
 
-The application exposes the Spring Boot Actuator health endpoint at `http://localhost:8080/actuator/health` and the Prometheus metrics endpoint at `http://localhost:8080/actuator/prometheus`. The Compose healthcheck uses the health endpoint, and the remote deployment script retries it from the VM for up to 60 seconds before failing the deployment. The Prometheus endpoint is intended to be reachable only from the monitoring VM; restrict port 8080 in the Azure NSG and the application VM firewall to the monitoring VM's private IP rather than exposing it publicly.
+### 3. Kubernetes + Docker deployment
 
-### Prometheus scraping
+This is the recommended learning path for the three-VM exercise:
 
-On the Prometheus/Grafana VM, add a scrape job similar to this to `prometheus.yml`:
+```text
+VM 1: Kubernetes control-plane
+VM 2: Kubernetes worker running product-crud
+VM 3: Prometheus + Grafana
+```
+
+The application is still a Docker image, but Kubernetes manages its desired state. The manifests in `deployment/kubernetes/` create one replica and expose port `30080` on each Kubernetes node. The deployment uses Actuator readiness and liveness probes and requests a small CPU/memory budget.
+
+On the Kubernetes VM, install/configure `kubectl` and ensure it can reach the cluster. The deployment script creates a namespace and a short-lived GHCR pull secret from environment variables, applies the manifests, and waits for the rollout:
+
+```bash
+export GHCR_USERNAME=<github-username>
+export GHCR_TOKEN=<read-package-token>
+bash scripts/kubernetes/deploy-kubernetes.sh /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
+```
+
+For production, use a managed identity, an external secret store, or a carefully scoped long-lived registry credential rather than storing credentials in YAML. This example keeps the mechanism visible for learning.
+
+### GitHub Actions CI/CD
+
+`.github/workflows/cicd.yml` runs CI on pull requests and pushes to `main`. A push to `main` runs:
+
+1. Maven tests and Checkstyle, SpotBugs, and PMD
+2. Docker build and push to GHCR with `sha-<commit>` and `latest` tags
+3. SSH deployment to Kubernetes by default
+
+Use **Actions -> Java CI/CD with Docker -> Run workflow** to choose `kubernetes` or `docker`. The manual workflow dispatch is useful for comparing both runtime paths without changing the application code.
+
+Configure these repository secrets:
+
+| Secrets | Used by |
+| --- | --- |
+| `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Default Kubernetes deployment |
+| `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Persistent GHCR pull secret for Kubernetes |
+| `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Optional Docker Compose deployment |
+
+Use a narrowly scoped GHCR token with package read permission for `K8S_GHCR_TOKEN`; do not use the short-lived `GITHUB_TOKEN` for a Kubernetes pull secret that must survive a later pod reschedule. Restrict SSH and Kubernetes NodePort access with Azure NSGs. The monitoring VM should be the only host allowed to reach the application metrics endpoint.
+
+### Prometheus and Grafana
+
+For Docker, scrape `<application-vm-private-ip>:8080`. For Kubernetes, scrape a Kubernetes node private IP on port `30080`:
 
 ```yaml
 scrape_configs:
   - job_name: product-crud
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<application-vm-private-ip>:8080"]
+      - targets: ["<kubernetes-node-private-ip>:30080"]
 ```
 
-Reload Prometheus, then confirm the target is `UP` in its **Status -> Targets** page. Grafana can use Prometheus as a data source and visualize the standard JVM, HTTP server, and process metrics exposed by the application.
+Confirm the target is `UP` in Prometheus **Status -> Targets**, then use Prometheus as the Grafana data source. The application exposes standard JVM, HTTP server, process, and Hikari metrics. In a larger Kubernetes setup, the usual next step is Prometheus Operator or `kube-prometheus-stack`, but a static target is intentionally used here to make the fundamentals clear.
 
-On pushes to `main`, GitHub Actions first runs tests and static analysis, then builds and pushes an immutable `sha-<commit>` image and `latest` to GitHub Container Registry (GHCR). The deploy job logs in to GHCR on the Azure VM, pulls the immutable image, and recreates the container with Docker Compose. Pull requests run CI only and never deploy.
-
-Before using the Docker CD job, install Docker Engine and the Docker Compose v2 plugin on the Azure VM. The GHCR package must be readable by the VM; for a private package, the workflow uses `GITHUB_TOKEN` through the remote deployment script. Configure database connection settings with environment variables or deployment secrets rather than committing credentials to `docker-compose.yml`.
-
-### Prepare an Ubuntu Azure VM
-
-Run the one-time host setup script as the SSH user that will execute deployments:
-
-```bash
-sudo bash scripts/install-docker-ubuntu.sh
-```
-
-The script uses Docker's official Ubuntu repository, installs Docker Engine, Buildx, and the Docker Compose v2 plugin, enables the Docker service, and adds the current SSH user to the `docker` group. Log out and log in again after it finishes so the group membership is applied. Verify the installation with:
-
-```bash
-docker --version
-docker compose version
-docker run --rm hello-world
-```
-
-The script targets Ubuntu VMs. Review it before execution if the VM has existing Docker packages, custom APT policies, or a non-Ubuntu distribution.
-
-The existing systemd deployment files remain available as an alternative deployment method, but the GitHub Actions workflow now deploys the container image rather than copying and launching a JAR directly.
+The application API remains available at `/api/products`; health and metrics are available at `/actuator/health` and `/actuator/prometheus`.
 
 `checkstyle.xml` defines the project's style rules, including indentation, whitespace, imports, naming, braces, and line length. SpotBugs and PMD use Maven plugin rule sets; teams commonly maintain project-specific rules and exclusions based on false-positive findings.
