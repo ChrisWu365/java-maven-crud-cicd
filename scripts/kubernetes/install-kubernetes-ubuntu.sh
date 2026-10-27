@@ -37,7 +37,21 @@ swapoff -a
 sed -ri '/\sswap\s/s/^/#/' /etc/fstab
 
 apt-get update
-apt-get install -y ca-certificates curl gpg apt-transport-https containerd
+apt-get install -y ca-certificates curl gpg apt-transport-https containerd kmod
+
+cat > /etc/modules-load.d/k8s.conf <<'EOF'
+overlay
+br_netfilter
+EOF
+modprobe overlay
+modprobe br_netfilter
+
+cat > /etc/sysctl.d/99-kubernetes-cri.conf <<'EOF'
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+sysctl --system
 
 mkdir -p /etc/containerd
 containerd config default > /etc/containerd/config.toml

@@ -171,6 +171,14 @@ kubectl get pods -A
 
 For this learning project, `--init-control-plane` creates a single-node cluster, installs `containerd`, `kubeadm`, `kubelet`, and `kubectl`, installs Flannel as the pod network, and allows workloads to run on the control-plane node. This is intentionally simple and is not highly available. For a two-VM cluster, initialize the control-plane on one VM, run the printed `kubeadm join ...` command on the worker, and do not remove the worker's scheduling taint.
 
+The setup script also enables the required Linux bridge and IPv4 forwarding settings. If a previous `kubeadm init` stopped during pre-flight checks, fix the host and run the same command again; do not use `--ignore-preflight-errors`:
+
+```bash
+sysctl net.ipv4.ip_forward
+# Expected: net.ipv4.ip_forward = 1
+sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
+```
+
 The script defaults to Kubernetes package stream `v1.30`; change it if your cluster uses another supported stream:
 
 ```bash
