@@ -8,7 +8,13 @@ MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
 if ! command -v kubectl >/dev/null 2>&1; then
-  echo "kubectl is not installed on the Kubernetes host." >&2
+  echo "kubectl is not installed. Run scripts/kubernetes/install-kubernetes-ubuntu.sh first." >&2
+  exit 1
+fi
+
+if ! kubectl cluster-info >/dev/null 2>&1; then
+  echo "kubectl cannot reach a Kubernetes cluster with the current kubeconfig." >&2
+  echo "Initialize or join a cluster, then verify: kubectl get nodes" >&2
   exit 1
 fi
 

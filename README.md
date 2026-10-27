@@ -159,7 +159,36 @@ VM 3: Prometheus + Grafana
 
 The application is still a Docker image, but Kubernetes manages its desired state. The manifests in `deployment/kubernetes/` create one replica and expose port `30080` on each Kubernetes node. The deployment uses Actuator readiness and liveness probes and requests a small CPU/memory budget.
 
-On the Kubernetes VM, install/configure `kubectl` and ensure it can reach the cluster. The deployment script creates a namespace and a short-lived GHCR pull secret from environment variables, applies the manifests, and waits for the rollout:
+#### Prepare the Kubernetes VM
+
+The GitHub Actions SSH step only deploys to an existing cluster; it does not install Kubernetes. On a new Ubuntu Kubernetes VM, copy or clone this repository and run the one-time setup script as the SSH user that will later be used by `K8S_VM_USER`:
+
+```bash
+sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
+kubectl get nodes
+kubectl get pods -A
+```
+
+For this learning project, `--init-control-plane` creates a single-node cluster, installs `containerd`, `kubeadm`, `kubelet`, and `kubectl`, installs Flannel as the pod network, and allows workloads to run on the control-plane node. This is intentionally simple and is not highly available. For a two-VM cluster, initialize the control-plane on one VM, run the printed `kubeadm join ...` command on the worker, and do not remove the worker's scheduling taint.
+
+The script defaults to Kubernetes package stream `v1.30`; change it if your cluster uses another supported stream:
+
+```bash
+sudo K8S_MINOR_VERSION=v1.31 bash scripts/kubernetes/install-kubernetes-ubuntu.sh --init-control-plane
+```
+
+The SSH user must have a working kubeconfig at `~/.kube/config`, because the CI/CD job runs `kubectl` as that user. Check this before configuring GitHub Actions:
+
+```bash
+kubectl cluster-info
+kubectl get nodes
+```
+
+If these commands fail, the workflow will stop with the same error rather than attempting an application deployment.
+
+#### Deploy the application
+
+The deployment script creates a namespace and a GHCR pull secret from environment variables, applies the manifests, and waits for the rollout:
 
 ```bash
 export GHCR_USERNAME=<github-username>
