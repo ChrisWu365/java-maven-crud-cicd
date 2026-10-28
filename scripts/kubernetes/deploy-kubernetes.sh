@@ -58,7 +58,7 @@ kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
   --docker-password="${GHCR_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-sed "s|IMAGE_REF|${IMAGE_REF}|g; s|SPRING_PROFILE|${SPRING_PROFILE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-deployment.yml" | kubectl apply -n "${NAMESPACE}" -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
