@@ -192,6 +192,11 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
+CI 部署时，如果服务器没有安装 `kubectl`，部署脚本会自动使用免密码
+`sudo` 执行 `install-kubernetes-ubuntu.sh`，安装 Kubernetes 前置依赖和
+客户端工具。但该操作不会自动初始化集群或加入已有集群；SSH 用户仍必须
+拥有已初始化集群对应的可用 `~/.kube/config`。
+
 `GHCR_TOKEN` 至少需要 `read:packages`。不要把短生命周期的
 `GITHUB_TOKEN` 当作节点长期使用的 pull secret。
 

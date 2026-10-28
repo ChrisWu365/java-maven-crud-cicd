@@ -8,8 +8,20 @@ MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
 if ! command -v kubectl >/dev/null 2>&1; then
-  echo "kubectl is not installed. Run scripts/kubernetes/install-kubernetes-ubuntu.sh first." >&2
-  exit 1
+  INSTALL_SCRIPT="${APP_DIR}/scripts/kubernetes/install-kubernetes-ubuntu.sh"
+  if [ ! -f "${INSTALL_SCRIPT}" ]; then
+    echo "Kubernetes installer not found: ${INSTALL_SCRIPT}" >&2
+    exit 1
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "kubectl is not installed and sudo is unavailable." >&2
+    exit 1
+  fi
+  echo "kubectl is not installed; installing Kubernetes prerequisites..."
+  if ! sudo -n bash "${INSTALL_SCRIPT}"; then
+    echo "Automatic Kubernetes installation failed. The SSH user must have passwordless sudo." >&2
+    exit 1
+  fi
 fi
 
 if ! kubectl cluster-info >/dev/null 2>&1; then

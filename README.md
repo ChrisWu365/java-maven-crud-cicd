@@ -211,6 +211,12 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
+During CI deployment, if `kubectl` is missing, the deployment script
+automatically runs `install-kubernetes-ubuntu.sh` with passwordless `sudo`.
+This installs the Kubernetes prerequisites and client tools, but does not
+initialize or join a cluster. The SSH user must already have a working
+`~/.kube/config` for an initialized cluster.
+
 `GHCR_TOKEN` requires at least `read:packages`. Do not use the short-lived
 `GITHUB_TOKEN` as a long-lived Kubernetes image-pull secret.
 
