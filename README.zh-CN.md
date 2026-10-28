@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 这是一个用于练习 GitHub Actions CI/CD 的 Spring Boot CRUD 项目。应用提供
-`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL等数据库。
+`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL 等数据库。
 
 ## 目录
 
@@ -20,11 +20,15 @@
 
 ## 技术栈
 
-- Java 8、Spring Boot 2.7
+- Java 8、Maven、Spring Boot 2.7
 - Spring Web、Spring Data JPA、Bean Validation
+- Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator、Micrometer Prometheus
 - H2、JUnit 5、MockMvc
-- Docker、Docker Compose、Kubernetes
+- Docker、Docker Compose
+- 使用 containerd、kubeadm、kubelet、kubectl 和 Flannel 的 Kubernetes
+- 用于指标、看板和告警规则的 Prometheus、Grafana
+- Azure Virtual Machine 和 Network Security Group
 - GitHub Actions、GHCR
 
 ## 系统架构
@@ -47,6 +51,11 @@ flowchart LR
 Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
 安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
 Grafana 容器和持久化卷。
+
+应用容器监听 `8080` 端口。Kubernetes 通过 NodePort `30080` 暴露应用，
+Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
+Prometheus 抓取应用的 `/actuator/prometheus` 指标，Grafana 从 Prometheus
+读取指标，并自动创建应用监控看板。
 
 ## 截图展示
 
@@ -299,6 +308,18 @@ HTTP 5xx 比例、P95 延迟、JVM 堆内存、CPU 和线程数等面板。Prome
 还会加载目标不可用、HTTP 5xx 比例过高、JVM 堆内存过高三类告警规则。
 这些规则可以在 **Prometheus -> Alerts** 查看；本学习项目暂未加入
 Alertmanager 或外部通知渠道。
+
+如果使用 Docker Compose，也可以在应用启动后单独部署监控：
+
+```bash
+export GRAFANA_ADMIN_PASSWORD=<strong-password>
+export PROMETHEUS_TARGET=host.docker.internal:8080
+sudo -E bash scripts/monitoring/deploy-monitoring.sh /home/<user>/app
+```
+
+Docker 监控地址为 `http://<DOCKER_VM_IP>:9090` 和
+`http://<DOCKER_VM_IP>:3000`。该脚本支持幂等执行，并使用命名卷保存
+Prometheus 和 Grafana 数据。
 
 ## 建议硬件配置
 
