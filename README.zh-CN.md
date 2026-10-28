@@ -9,6 +9,7 @@
 
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
+- [截图展示](#截图展示)
 - [本地运行](#本地运行)
 - [API](#api)
 - [部署方式](#部署方式)
@@ -46,6 +47,34 @@ flowchart LR
 Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
 安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
 Grafana 容器和持久化卷。
+
+## 截图展示
+
+以下截图展示了 all-in-one 部署使用的 Azure 资源、网络配置，以及应用和
+监控界面。
+
+### Azure 资源
+
+![Azure VM 资源](.github/assets/ScreenShot_Azure_VM.png)
+
+### Azure VM 网络设置
+
+Azure Network Security Group 放行 SSH `22` 端口，以及应用和监控使用的
+NodePort：`30080`、`30030`、`30090`。
+
+![Azure VM 网络设置](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
+
+### Swagger UI
+
+![Swagger UI](.github/assets/ScreenShot_Swagger.png)
+
+### Grafana 看板
+
+![Grafana 看板](.github/assets/ScreenShot_Grafana.png)
+
+### Prometheus 告警
+
+![Prometheus 告警](.github/assets/ScreenShot_Prometheus.png)
 
 ## 本地运行
 
