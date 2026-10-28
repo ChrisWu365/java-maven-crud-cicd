@@ -286,7 +286,9 @@ Open Prometheus at `http://<K8S_VM_IP>:30090` and Grafana at
 `http://<K8S_VM_IP>:30080`. Existing Deployments, Services, ConfigMaps, and
 the Grafana Secret are reconciled on every deployment. This learning setup uses
 `emptyDir` for monitoring data; deleting the Pods loses metrics history and
-Grafana data. Restrict ports `30030` and `30090` to trusted networks.
+Grafana data. Monitoring uses the `Recreate` strategy because this is a
+single-node learning cluster; a monitoring Pod is stopped before its replacement
+starts. Restrict ports `30030` and `30090` to trusted networks.
 
 The deployment automatically provisions a **Product CRUD / Spring Boot**
 dashboard with request rate, HTTP 5xx ratio, p95 latency, JVM heap, CPU, and

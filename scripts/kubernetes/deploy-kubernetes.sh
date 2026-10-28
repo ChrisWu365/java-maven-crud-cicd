@@ -118,6 +118,20 @@ if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=
   done
   exit 1
 fi
-kubectl -n "${NAMESPACE}" rollout status deployment/prometheus --timeout=180s
-kubectl -n "${NAMESPACE}" rollout status deployment/grafana --timeout=180s
+for monitoring_deployment in prometheus grafana; do
+  if ! kubectl -n "${NAMESPACE}" rollout status \
+    "deployment/${monitoring_deployment}" --timeout=180s; then
+    echo "Monitoring deployment rollout failed: ${monitoring_deployment}" >&2
+    kubectl -n "${NAMESPACE}" get "deployment/${monitoring_deployment}" -o wide >&2 || true
+    kubectl -n "${NAMESPACE}" get pods -l "app=${monitoring_deployment}" -o wide >&2 || true
+    kubectl -n "${NAMESPACE}" describe pods -l "app=${monitoring_deployment}" >&2 || true
+    kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
+    for pod in $(kubectl -n "${NAMESPACE}" get pods -l "app=${monitoring_deployment}" \
+      -o jsonpath='{.items[*].metadata.name}'); do
+      echo "Logs for pod ${pod}:" >&2
+      kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers=true --tail=200 >&2 || true
+    done
+    exit 1
+  fi
+done
 kubectl -n "${NAMESPACE}" get deployment,service,pods -o wide

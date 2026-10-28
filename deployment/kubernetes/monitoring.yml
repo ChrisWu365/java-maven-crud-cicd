@@ -53,6 +53,8 @@ metadata:
   namespace: product-crud
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -119,6 +121,8 @@ metadata:
   namespace: product-crud
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
