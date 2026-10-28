@@ -70,7 +70,7 @@ spec:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus
             - --storage.tsdb.retention.time=15d
-            - --rule.file=/etc/prometheus/rules/prometheus-rules.yml
+            - --rule.files=/etc/prometheus/rules/prometheus-rules.yml
           ports:
             - name: http
               containerPort: 9090

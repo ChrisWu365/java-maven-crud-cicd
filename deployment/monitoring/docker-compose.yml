@@ -15,7 +15,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--config.expand-env=true"
-      - "--rule.file=/etc/prometheus/prometheus-rules.yml"
+      - "--rule.files=/etc/prometheus/prometheus-rules.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
     restart: unless-stopped
