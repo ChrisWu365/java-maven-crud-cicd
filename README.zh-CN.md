@@ -264,6 +264,12 @@ Secret 每次部署都会幂等更新。本学习配置使用 `emptyDir` 保存�
 Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失；请只向可信网络开放
 `30030` 和 `30090`。
 
+部署会自动创建 **Product CRUD / Spring Boot** 看板，包含请求速率、
+HTTP 5xx 比例、P95 延迟、JVM 堆内存、CPU 和线程数等面板。Prometheus
+还会加载目标不可用、HTTP 5xx 比例过高、JVM 堆内存过高三类告警规则。
+这些规则可以在 **Prometheus -> Alerts** 查看；本学习项目暂未加入
+Alertmanager 或外部通知渠道。
+
 ## 建议硬件配置
 
 以下配置适合学习或小型内部 all-in-one 部署，假设一个应用实例、H2 数据库、
@@ -342,8 +348,17 @@ scrape_configs:
       - targets: ["product-crud:8080"]
 ```
 
-在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再将 Prometheus
-添加为 Grafana data source。生产环境应限制 metrics endpoint 只允许监控主机访问。
+在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再打开
+**Product CRUD** 文件夹中的自动创建看板。常用 PromQL 示例：
+
+```promql
+sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="product-crud"}[5m])))
+sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+up{job="product-crud"}
+```
+
+生产环境应限制 metrics endpoint 只允许监控主机访问。
 
 ## 排障
 

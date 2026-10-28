@@ -6,6 +6,7 @@ APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spr
 IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
 SPRING_PROFILE="${3:-prod}"
 MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
+MONITORING_DIR="${APP_DIR}/deployment/monitoring"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
 case "${SPRING_PROFILE}" in
@@ -63,6 +64,13 @@ if [ ! -f "${MANIFEST_DIR}/product-crud-deployment.yml" ] || \
   echo "Kubernetes manifests not found in ${MANIFEST_DIR}." >&2
   exit 1
 fi
+for monitoring_file in prometheus-rules.yml grafana/dashboards/product-crud.json \
+  grafana/provisioning/dashboards/dashboards.yml; do
+  if [ ! -f "${MONITORING_DIR}/${monitoring_file}" ]; then
+    echo "Monitoring file not found: ${MONITORING_DIR}/${monitoring_file}" >&2
+    exit 1
+  fi
+done
 
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
@@ -82,6 +90,15 @@ if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
 fi
 kubectl -n "${NAMESPACE}" create secret generic grafana-admin \
   --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap prometheus-rules \
+  --from-file=prometheus-rules.yml="${MONITORING_DIR}/prometheus-rules.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboard-provider \
+  --from-file=dashboards.yml="${MONITORING_DIR}/grafana/provisioning/dashboards/dashboards.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboards \
+  --from-file=product-crud.json="${MONITORING_DIR}/grafana/dashboards/product-crud.json" \
   --dry-run=client -o yaml | kubectl apply -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/monitoring.yml" | kubectl apply -n "${NAMESPACE}" -f -

@@ -24,6 +24,7 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: prometheus
         type: prometheus
         access: proxy
         url: http://prometheus:9090
@@ -67,6 +68,7 @@ spec:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus
             - --storage.tsdb.retention.time=15d
+            - --rule.file=/etc/prometheus/rules/prometheus-rules.yml
           ports:
             - name: http
               containerPort: 9090
@@ -82,12 +84,18 @@ spec:
               readOnly: true
             - name: data
               mountPath: /prometheus
+            - name: rules
+              mountPath: /etc/prometheus/rules
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: prometheus-config
         - name: data
           emptyDir: {}
+        - name: rules
+          configMap:
+            name: prometheus-rules
 ---
 apiVersion: v1
 kind: Service
@@ -145,6 +153,12 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
             - name: data
               mountPath: /var/lib/grafana
       volumes:
@@ -153,3 +167,9 @@ spec:
             name: grafana-datasources
         - name: data
           emptyDir: {}
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
