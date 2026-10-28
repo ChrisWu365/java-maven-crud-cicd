@@ -261,8 +261,9 @@ Prometheus 地址是 `http://<K8S_VM_IP>:30090`，Grafana 地址是
 `http://<K8S_VM_IP>:30030`，应用地址仍是
 `http://<K8S_VM_IP>:30080`。Deployment、Service、ConfigMap 和 Grafana
 Secret 每次部署都会幂等更新。本学习配置使用 `emptyDir` 保存监控数据，
-Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失；请只向可信网络开放
-`30030` 和 `30090`。
+Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失。由于这是单节点学习
+集群，监控 Deployment 使用 `Recreate` 策略，会先停止旧 Pod 再启动新 Pod；
+请只向可信网络开放 `30030` 和 `30090`。
 
 部署会自动创建 **Product CRUD / Spring Boot** 看板，包含请求速率、
 HTTP 5xx 比例、P95 延迟、JVM 堆内存、CPU 和线程数等面板。Prometheus
