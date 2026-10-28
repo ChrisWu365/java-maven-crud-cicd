@@ -27,17 +27,29 @@ if ! command -v kubectl >/dev/null 2>&1; then
     echo "kubectl is not installed and sudo is unavailable." >&2
     exit 1
   fi
-  echo "kubectl is not installed; installing Kubernetes prerequisites..."
-  if ! sudo -n bash "${INSTALL_SCRIPT}"; then
+  echo "kubectl is not installed; installing Kubernetes prerequisites and initializing a single-node cluster..."
+  if ! sudo -n bash "${INSTALL_SCRIPT}" --init-control-plane; then
     echo "Automatic Kubernetes installation failed. The SSH user must have passwordless sudo." >&2
     exit 1
   fi
 fi
 
 if ! kubectl cluster-info >/dev/null 2>&1; then
-  echo "kubectl cannot reach a Kubernetes cluster with the current kubeconfig." >&2
-  echo "Initialize or join a cluster, then verify: kubectl get nodes" >&2
-  exit 1
+  INSTALL_SCRIPT="${APP_DIR}/scripts/kubernetes/install-kubernetes-ubuntu.sh"
+  if [ ! -f "${INSTALL_SCRIPT}" ]; then
+    echo "Kubernetes installer not found: ${INSTALL_SCRIPT}" >&2
+    exit 1
+  fi
+  if ! sudo -n bash "${INSTALL_SCRIPT}" --init-control-plane; then
+    echo "Kubernetes cluster is unreachable and automatic single-node initialization failed." >&2
+    echo "For an existing multi-node cluster, configure kubeconfig and verify: kubectl get nodes" >&2
+    exit 1
+  fi
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    echo "Kubernetes cluster is still unreachable after initialization." >&2
+    echo "Verify the SSH user's kubeconfig: kubectl get nodes" >&2
+    exit 1
+  fi
 fi
 
 if [ -z "${GHCR_USERNAME:-}" ] || [ -z "${GHCR_TOKEN:-}" ]; then

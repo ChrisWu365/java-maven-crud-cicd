@@ -193,7 +193,8 @@ The script installs containerd, kubeadm, kubelet, kubectl, and Flannel; creates
 the cluster; and removes the control-plane `NoSchedule` taint so the same node
 can run application workloads. It is idempotent: installed dependencies are
 skipped and an existing `/etc/kubernetes/admin.conf` prevents a second
-`kubeadm init`.
+`kubeadm init`. During CI deployment, an unreachable cluster automatically
+triggers this single-node initialization flow on a new server.
 
 To install packages without initializing a cluster:
 
@@ -208,7 +209,8 @@ taints in a multi-node production setup.
 Important prerequisites:
 
 - Ubuntu with apt and systemd; run the script with `sudo`.
-- The CI SSH user must be able to run `kubectl cluster-info`.
+- The CI SSH user must have passwordless `sudo`; existing multi-node clusters
+  must also provide a working `kubectl cluster-info` context.
 - The default Pod CIDR is `10.244.0.0/16`; set `POD_NETWORK_CIDR` if it conflicts.
 - The default Kubernetes package stream is `v1.30`; set `K8S_MINOR_VERSION` to change it.
 - The script disables swap and configures bridge filtering, IPv4 forwarding, and systemd cgroups.
@@ -236,11 +238,15 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
-During CI deployment, if `kubectl` is missing, the deployment script
-automatically runs `install-kubernetes-ubuntu.sh` with passwordless `sudo`.
-This installs the Kubernetes prerequisites and client tools, but does not
-initialize or join a cluster. The SSH user must already have a working
-`~/.kube/config` for an initialized cluster.
+During CI deployment, if `kubectl` is missing, or if it cannot reach a cluster,
+the deployment script automatically runs
+`install-kubernetes-ubuntu.sh --init-control-plane` with passwordless `sudo`.
+On a new server this creates a single-node cluster, installs Flannel, copies
+`admin.conf` to the SSH user's kubeconfig, and removes the control-plane taint.
+An existing `/etc/kubernetes/admin.conf` prevents a second initialization.
+For an existing multi-node cluster, configure and verify the SSH user's
+`~/.kube/config` before deployment instead of relying on automatic
+single-node initialization.
 
 The Kubernetes deployment passes the Spring profile selected from the branch:
 `dev` uses `dev`, `staging` uses `staging`, and `main` uses `prod`.

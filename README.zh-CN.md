@@ -174,7 +174,8 @@ kubectl get pods -A
 脚本会安装 containerd、kubeadm、kubelet、kubectl 和 Flannel，初始化集群，
 并移除 control-plane 的 `NoSchedule` 污点，使同一节点可以运行应用。
 脚本是幂等的：已安装的依赖不会重复安装，已有 `/etc/kubernetes/admin.conf`
-时不会再次执行 `kubeadm init`，可以安全重跑。
+时不会再次执行 `kubeadm init`，可以安全重跑。CI 部署时，如果集群不可访问，
+新服务器会自动按单机模式初始化。
 
 如果只准备节点但不初始化集群：
 
@@ -188,7 +189,8 @@ sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh
 安装前提和注意事项：
 
 - Ubuntu、apt、systemd；脚本必须通过 `sudo` 执行。
-- SSH 用户必须能执行 `kubectl cluster-info`，因为 CI 会以该用户执行 kubectl。
+- SSH 用户必须具备免密码 `sudo`；已有多节点集群还必须为该用户配置可用的
+  `kubectl cluster-info` 上下文。
 - Kubernetes 与 Flannel 使用默认 Pod 网段 `10.244.0.0/16`，如有冲突可设置
   `POD_NETWORK_CIDR`。
 - 默认 Kubernetes 软件源为 `v1.30`，可通过 `K8S_MINOR_VERSION=v1.31` 修改。
@@ -216,10 +218,13 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
-CI 部署时，如果服务器没有安装 `kubectl`，部署脚本会自动使用免密码
-`sudo` 执行 `install-kubernetes-ubuntu.sh`，安装 Kubernetes 前置依赖和
-客户端工具。但该操作不会自动初始化集群或加入已有集群；SSH 用户仍必须
-拥有已初始化集群对应的可用 `~/.kube/config`。
+CI 部署时，如果服务器没有安装 `kubectl`，或者 `kubectl` 无法连接集群，
+部署脚本会自动使用免密码 `sudo` 执行
+`install-kubernetes-ubuntu.sh --init-control-plane`。在新服务器上，这会
+初始化单节点集群、安装 Flannel、为 SSH 用户复制 kubeconfig，并移除
+control-plane 污点。已有 `/etc/kubernetes/admin.conf` 时不会重复初始化。
+如果是已有多节点集群，应先为 SSH 用户配置并验证 `~/.kube/config`，不要
+依赖自动单机初始化。
 
 Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
 `staging` 使用 `staging`，`main` 使用 `prod`。
