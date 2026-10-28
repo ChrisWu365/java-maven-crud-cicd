@@ -4,7 +4,7 @@
 
 This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
 It provides create, read, update, and delete operations for `Product` records and
-uses an H2 in-memory database, so databases like MySQL is not required.
+uses an H2 in-memory database, so databases like MySQL is not required .
 
 ## Contents
 
