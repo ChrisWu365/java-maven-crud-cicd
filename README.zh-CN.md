@@ -261,8 +261,15 @@ Prometheus 地址是 `http://<K8S_VM_IP>:30090`，Grafana 地址是
 `http://<K8S_VM_IP>:30030`，应用地址仍是
 `http://<K8S_VM_IP>:30080`。Deployment、Service、ConfigMap 和 Grafana
 Secret 每次部署都会幂等更新。本学习配置使用 `emptyDir` 保存监控数据，
-Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失；请只向可信网络开放
-`30030` 和 `30090`。
+Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失。由于这是单节点学习
+集群，监控 Deployment 使用 `Recreate` 策略，会先停止旧 Pod 再启动新 Pod；
+请只向可信网络开放 `30030` 和 `30090`。
+
+部署会自动创建 **Product CRUD / Spring Boot** 看板，包含请求速率、
+HTTP 5xx 比例、P95 延迟、JVM 堆内存、CPU 和线程数等面板。Prometheus
+还会加载目标不可用、HTTP 5xx 比例过高、JVM 堆内存过高三类告警规则。
+这些规则可以在 **Prometheus -> Alerts** 查看；本学习项目暂未加入
+Alertmanager 或外部通知渠道。
 
 ## 建议硬件配置
 
@@ -342,8 +349,17 @@ scrape_configs:
       - targets: ["product-crud:8080"]
 ```
 
-在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再将 Prometheus
-添加为 Grafana data source。生产环境应限制 metrics endpoint 只允许监控主机访问。
+在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再打开
+**Product CRUD** 文件夹中的自动创建看板。常用 PromQL 示例：
+
+```promql
+sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="product-crud"}[5m])))
+sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+up{job="product-crud"}
+```
+
+生产环境应限制 metrics endpoint 只允许监控主机访问。
 
 ## 排障
 

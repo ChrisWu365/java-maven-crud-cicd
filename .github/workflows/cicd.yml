@@ -150,7 +150,7 @@ jobs:
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          source: "deployment/kubernetes,scripts/kubernetes"
+          source: "deployment/kubernetes,deployment/monitoring,scripts/kubernetes"
           target: "/home/${{ secrets.K8S_VM_USER }}/app/"
           strip_components: 0
       - name: Deploy image over SSH

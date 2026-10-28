@@ -1,0 +1,70 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "title": "HTTP request rate",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(http_server_requests_seconds_count{job=\"product-crud\"}[5m]))", "legendFormat": "requests/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "title": "HTTP 5xx error ratio",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(rate(http_server_requests_seconds_count{job=\"product-crud\",status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"product-crud\"}[5m]))", "legendFormat": "5xx ratio", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 7},
+      "id": 3,
+      "title": "HTTP p95 latency",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"product-crud\"}[5m])))", "legendFormat": "p95", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 7},
+      "id": 4,
+      "title": "JVM heap used",
+      "type": "timeseries",
+      "targets": [{"expr": "sum(jvm_memory_used_bytes{job=\"product-crud\",area=\"heap\"})", "legendFormat": "heap used", "refId": "A"}, {"expr": "sum(jvm_memory_max_bytes{job=\"product-crud\",area=\"heap\"})", "legendFormat": "heap max", "refId": "B"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 14},
+      "id": 5,
+      "title": "JVM CPU usage",
+      "type": "timeseries",
+      "targets": [{"expr": "process_cpu_usage{job=\"product-crud\"}", "legendFormat": "process CPU", "refId": "A"}, {"expr": "system_cpu_usage{job=\"product-crud\"}", "legendFormat": "system CPU", "refId": "B"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 14},
+      "id": 6,
+      "title": "Live threads",
+      "type": "timeseries",
+      "targets": [{"expr": "jvm_threads_live_threads{job=\"product-crud\"}", "legendFormat": "live threads", "refId": "A"}]
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["spring-boot", "product-crud"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "title": "Product CRUD / Spring Boot",
+  "uid": "product-crud",
+  "version": 1
+}

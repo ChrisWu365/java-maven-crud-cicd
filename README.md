@@ -286,7 +286,16 @@ Open Prometheus at `http://<K8S_VM_IP>:30090` and Grafana at
 `http://<K8S_VM_IP>:30080`. Existing Deployments, Services, ConfigMaps, and
 the Grafana Secret are reconciled on every deployment. This learning setup uses
 `emptyDir` for monitoring data; deleting the Pods loses metrics history and
-Grafana data. Restrict ports `30030` and `30090` to trusted networks.
+Grafana data. Monitoring uses the `Recreate` strategy because this is a
+single-node learning cluster; a monitoring Pod is stopped before its replacement
+starts. Restrict ports `30030` and `30090` to trusted networks.
+
+The deployment automatically provisions a **Product CRUD / Spring Boot**
+dashboard with request rate, HTTP 5xx ratio, p95 latency, JVM heap, CPU, and
+thread panels. Prometheus also loads alert rules for an unavailable target,
+high HTTP 5xx rate, and high JVM heap usage. These rules are visible under
+**Prometheus -> Alerts**; this learning project does not include Alertmanager
+or an external notification channel yet.
 
 ## Recommended hardware
 
@@ -339,7 +348,6 @@ SSO, authorize the PAT for SSO as well.
 
 ## Monitoring
 
-The GitHub Actions deployment automatically runs
 The GitHub Actions Kubernetes deployment automatically applies
 `deployment/kubernetes/monitoring.yml` after the application deployment.
 Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub Environment
@@ -357,8 +365,17 @@ scrape_configs:
 ```
 
 Confirm that the target is `UP` under **Prometheus -> Status -> Targets**, then
-add Prometheus as a Grafana data source. In production, restrict the metrics
-endpoint to the monitoring host.
+open the provisioned dashboard under the **Product CRUD** folder. Useful
+PromQL examples include:
+
+```promql
+sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="product-crud"}[5m])))
+sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+up{job="product-crud"}
+```
+
+In production, restrict the metrics endpoint to the monitoring host.
 
 ## Troubleshooting
 

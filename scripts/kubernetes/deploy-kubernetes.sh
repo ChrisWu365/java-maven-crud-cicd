@@ -6,6 +6,7 @@ APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spr
 IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
 SPRING_PROFILE="${3:-prod}"
 MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
+MONITORING_DIR="${APP_DIR}/deployment/monitoring"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
 case "${SPRING_PROFILE}" in
@@ -63,6 +64,13 @@ if [ ! -f "${MANIFEST_DIR}/product-crud-deployment.yml" ] || \
   echo "Kubernetes manifests not found in ${MANIFEST_DIR}." >&2
   exit 1
 fi
+for monitoring_file in prometheus-rules.yml grafana/dashboards/product-crud.json \
+  grafana/provisioning/dashboards/dashboards.yml; do
+  if [ ! -f "${MONITORING_DIR}/${monitoring_file}" ]; then
+    echo "Monitoring file not found: ${MONITORING_DIR}/${monitoring_file}" >&2
+    exit 1
+  fi
+done
 
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
@@ -83,6 +91,15 @@ fi
 kubectl -n "${NAMESPACE}" create secret generic grafana-admin \
   --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
   --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap prometheus-rules \
+  --from-file=prometheus-rules.yml="${MONITORING_DIR}/prometheus-rules.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboard-provider \
+  --from-file=dashboards.yml="${MONITORING_DIR}/grafana/provisioning/dashboards/dashboards.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboards \
+  --from-file=product-crud.json="${MONITORING_DIR}/grafana/dashboards/product-crud.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/monitoring.yml" | kubectl apply -n "${NAMESPACE}" -f -
 
@@ -101,6 +118,20 @@ if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=
   done
   exit 1
 fi
-kubectl -n "${NAMESPACE}" rollout status deployment/prometheus --timeout=180s
-kubectl -n "${NAMESPACE}" rollout status deployment/grafana --timeout=180s
+for monitoring_deployment in prometheus grafana; do
+  if ! kubectl -n "${NAMESPACE}" rollout status \
+    "deployment/${monitoring_deployment}" --timeout=180s; then
+    echo "Monitoring deployment rollout failed: ${monitoring_deployment}" >&2
+    kubectl -n "${NAMESPACE}" get "deployment/${monitoring_deployment}" -o wide >&2 || true
+    kubectl -n "${NAMESPACE}" get pods -l "app=${monitoring_deployment}" -o wide >&2 || true
+    kubectl -n "${NAMESPACE}" describe pods -l "app=${monitoring_deployment}" >&2 || true
+    kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
+    for pod in $(kubectl -n "${NAMESPACE}" get pods -l "app=${monitoring_deployment}" \
+      -o jsonpath='{.items[*].metadata.name}'); do
+      echo "Logs for pod ${pod}:" >&2
+      kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers=true --tail=200 >&2 || true
+    done
+    exit 1
+  fi
+done
 kubectl -n "${NAMESPACE}" get deployment,service,pods -o wide
