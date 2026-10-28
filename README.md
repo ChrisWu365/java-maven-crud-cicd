@@ -10,6 +10,7 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 
 - [Technology stack](#technology-stack)
 - [System architecture](#system-architecture)
+- [Screenshots](#screenshots)
 - [Run locally](#run-locally)
 - [API](#api)
 - [Deployment options](#deployment-options)
@@ -48,6 +49,35 @@ flowchart LR
 Kubernetes is optional for orchestration. On a single Docker host, the
 monitoring installer below is idempotent: it installs Docker only when needed,
 and reuses existing Prometheus/Grafana containers and persistent volumes.
+
+## Screenshots
+
+The following screenshots show the Azure resources and network configuration
+used by the all-in-one deployment, followed by the application and monitoring
+interfaces.
+
+### Azure resources
+
+![Azure VM resources](.github/assets/ScreenShot_Azure_VM.png)
+
+### Azure VM network settings
+
+The Azure Network Security Group allows SSH on port `22` and the application
+and monitoring NodePorts `30080`, `30030`, and `30090`.
+
+![Azure VM network settings](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
+
+### Swagger UI
+
+![Swagger UI](.github/assets/ScreenShot_Swagger.png)
+
+### Grafana dashboard
+
+![Grafana dashboard](.github/assets/ScreenShot_Grafana.png)
+
+### Prometheus alerts
+
+![Prometheus alerts](.github/assets/ScreenShot_Prometheus.png)
 
 ## Run locally
 
