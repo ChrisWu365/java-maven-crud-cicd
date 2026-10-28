@@ -128,6 +128,8 @@ jobs:
     concurrency:
       group: deployment-${{ github.ref_name }}
       cancel-in-progress: false
+    env:
+      SPRING_PROFILE: ${{ github.ref_name == 'dev' && 'dev' || github.ref_name == 'staging' && 'staging' || 'prod' }}
     permissions:
       contents: read
       packages: read
@@ -149,6 +151,7 @@ jobs:
         env:
           APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
           IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
+          SPRING_PROFILE: ${{ env.SPRING_PROFILE }}
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
         with:
@@ -156,6 +159,6 @@ jobs:
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN
           script: |
-            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}"
+            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"

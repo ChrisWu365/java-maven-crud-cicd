@@ -217,6 +217,9 @@ This installs the Kubernetes prerequisites and client tools, but does not
 initialize or join a cluster. The SSH user must already have a working
 `~/.kube/config` for an initialized cluster.
 
+The Kubernetes deployment passes the Spring profile selected from the branch:
+`dev` uses `dev`, `staging` uses `staging`, and `main` uses `prod`.
+
 `GHCR_TOKEN` requires at least `read:packages`. Do not use the short-lived
 `GITHUB_TOKEN` as a long-lived Kubernetes image-pull secret.
 

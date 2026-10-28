@@ -197,6 +197,9 @@ CI 部署时，如果服务器没有安装 `kubectl`，部署脚本会自动使�
 客户端工具。但该操作不会自动初始化集群或加入已有集群；SSH 用户仍必须
 拥有已初始化集群对应的可用 `~/.kube/config`。
 
+Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
+`staging` 使用 `staging`，`main` 使用 `prod`。
+
 `GHCR_TOKEN` 至少需要 `read:packages`。不要把短生命周期的
 `GITHUB_TOKEN` 当作节点长期使用的 pull secret。
 
