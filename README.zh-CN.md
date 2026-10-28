@@ -8,9 +8,11 @@
 ## 目录
 
 - [技术栈](#技术栈)
+- [系统架构](#系统架构)
 - [本地运行](#本地运行)
 - [API](#api)
 - [部署方式](#部署方式)
+- [建议硬件配置](#建议硬件配置)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [监控](#监控)
 - [排障](#排障)
@@ -23,6 +25,27 @@
 - H2、JUnit 5、MockMvc
 - Docker、Docker Compose、Kubernetes
 - GitHub Actions、GHCR
+
+## 系统架构
+
+本项目可以作为单服务器 all-in-one 完整运行：应用、Prometheus 和 Grafana
+部署在同一台主机上；Grafana 会自动配置 Prometheus 数据源，Prometheus
+抓取应用的 `/actuator/prometheus` 指标接口。
+
+```mermaid
+flowchart LR
+    User[用户 / 浏览器] --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot CRUD<br/>容器 :8080]
+    App --> H2[(H2 数据库)]
+    App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    Graf[Grafana<br/>NodePort :30030] --> Prom
+    CI[GitHub Actions] --> Registry[GHCR]
+    Registry --> App
+```
+
+Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
+安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
+Grafana 容器和持久化卷。
 
 ## 本地运行
 
@@ -91,6 +114,7 @@ mvn clean verify
 | 手动 JAR | `scripts/manual/` | Java + systemd | 学习主机进程部署 |
 | Docker | `deployment/docker/`、`scripts/docker/` | Docker Compose | 单机容器部署 |
 | Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Deployment + NodePort | 滚动发布和容器编排 |
+| 监控 | `deployment/monitoring/`、`scripts/monitoring/` | Prometheus + Grafana | 单机监控和可视化 |
 
 Docker 镜像由 GitHub Actions 构建并推送到 GHCR。Docker 和 Kubernetes
 都使用不可变的 `sha-<commit>` 标签，不会在部署主机重新编译代码。
@@ -150,7 +174,8 @@ kubectl get pods -A
 脚本会安装 containerd、kubeadm、kubelet、kubectl 和 Flannel，初始化集群，
 并移除 control-plane 的 `NoSchedule` 污点，使同一节点可以运行应用。
 脚本是幂等的：已安装的依赖不会重复安装，已有 `/etc/kubernetes/admin.conf`
-时不会再次执行 `kubeadm init`，可以安全重跑。
+时不会再次执行 `kubeadm init`，可以安全重跑。CI 部署时，如果集群不可访问，
+新服务器会自动按单机模式初始化。
 
 如果只准备节点但不初始化集群：
 
@@ -164,7 +189,8 @@ sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh
 安装前提和注意事项：
 
 - Ubuntu、apt、systemd；脚本必须通过 `sudo` 执行。
-- SSH 用户必须能执行 `kubectl cluster-info`，因为 CI 会以该用户执行 kubectl。
+- SSH 用户必须具备免密码 `sudo`；已有多节点集群还必须为该用户配置可用的
+  `kubectl cluster-info` 上下文。
 - Kubernetes 与 Flannel 使用默认 Pod 网段 `10.244.0.0/16`，如有冲突可设置
   `POD_NETWORK_CIDR`。
 - 默认 Kubernetes 软件源为 `v1.30`，可通过 `K8S_MINOR_VERSION=v1.31` 修改。
@@ -192,10 +218,13 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
-CI 部署时，如果服务器没有安装 `kubectl`，部署脚本会自动使用免密码
-`sudo` 执行 `install-kubernetes-ubuntu.sh`，安装 Kubernetes 前置依赖和
-客户端工具。但该操作不会自动初始化集群或加入已有集群；SSH 用户仍必须
-拥有已初始化集群对应的可用 `~/.kube/config`。
+CI 部署时，如果服务器没有安装 `kubectl`，或者 `kubectl` 无法连接集群，
+部署脚本会自动使用免密码 `sudo` 执行
+`install-kubernetes-ubuntu.sh --init-control-plane`。在新服务器上，这会
+初始化单节点集群、安装 Flannel、为 SSH 用户复制 kubeconfig，并移除
+control-plane 污点。已有 `/etc/kubernetes/admin.conf` 时不会重复初始化。
+如果是已有多节点集群，应先为 SSH 用户配置并验证 `~/.kube/config`，不要
+依赖自动单机初始化。
 
 Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
 `staging` 使用 `staging`，`main` 使用 `prod`。
@@ -219,6 +248,42 @@ sudo ufw allow 30080/tcp
 kubectl -n product-crud get service product-crud
 kubectl get nodes -o wide
 ```
+
+### 4. Prometheus 和 Grafana 监控
+
+Kubernetes 部署会通过 `scripts/kubernetes/deploy-kubernetes.sh` 直接创建
+监控资源，不会在 Kubernetes 节点安装 Docker。工作流从 GitHub Environment
+Secret 读取 `GRAFANA_ADMIN_PASSWORD`，创建或更新 Kubernetes Secret，然后
+应用 `deployment/kubernetes/monitoring.yml`。Prometheus 抓取集群内部的
+`product-crud:8080` Service，不依赖外部 NodePort。
+
+Prometheus 地址是 `http://<K8S_VM_IP>:30090`，Grafana 地址是
+`http://<K8S_VM_IP>:30030`，应用地址仍是
+`http://<K8S_VM_IP>:30080`。Deployment、Service、ConfigMap 和 Grafana
+Secret 每次部署都会幂等更新。本学习配置使用 `emptyDir` 保存监控数据，
+Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失；请只向可信网络开放
+`30030` 和 `30090`。
+
+部署会自动创建 **Product CRUD / Spring Boot** 看板，包含请求速率、
+HTTP 5xx 比例、P95 延迟、JVM 堆内存、CPU 和线程数等面板。Prometheus
+还会加载目标不可用、HTTP 5xx 比例过高、JVM 堆内存过高三类告警规则。
+这些规则可以在 **Prometheus -> Alerts** 查看；本学习项目暂未加入
+Alertmanager 或外部通知渠道。
+
+## 建议硬件配置
+
+以下配置适合学习或小型内部 all-in-one 部署，假设一个应用实例、H2 数据库、
+Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
+
+| 用途 | CPU | 内存 | 存储 | 网络 |
+| --- | --- | --- | --- | --- |
+| 最低 / 演示 | 2 vCPU | 4 GB RAM | 30 GB SSD | 5 Mbps |
+| 推荐 / 小团队 | 4 vCPU | 8 GB RAM | 80 GB SSD | 10 Mbps |
+| 较高流量 | 8 vCPU | 16 GB RAM | 150+ GB SSD | 50 Mbps |
+
+建议使用 SSD，并至少保留 20% 空间给容器镜像层、Prometheus 数据和日志。
+生产环境应使用外部数据库，最好将监控与应用拆分到不同主机，并根据实际
+指标采样速率和保留周期规划 Prometheus 存储容量。
 
 ## GitHub Actions CI/CD
 
@@ -244,6 +309,7 @@ Kubernetes 或 Docker。
 | `K8S_VM_IP`、`K8S_VM_USER`、`K8S_VM_KEY` | Kubernetes SSH |
 | `K8S_GHCR_USERNAME`、`K8S_GHCR_TOKEN` | Kubernetes 拉取 GHCR 镜像 |
 | `DOCKER_VM_IP`、`DOCKER_VM_USER`、`DOCKER_VM_KEY` | Docker Compose SSH |
+| `GRAFANA_ADMIN_PASSWORD` | 监控部署使用的 Grafana 管理员密码 |
 
 `publish` job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像；
 Kubernetes 节点使用单独的 `K8S_GHCR_TOKEN` 拉取镜像。private GHCR package
@@ -266,18 +332,33 @@ kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=20
 
 ## 监控
 
-应用暴露 `/actuator/prometheus`。Kubernetes 静态抓取示例：
+GitHub Actions 会在应用部署后自动应用
+`deployment/kubernetes/monitoring.yml`。请在每个 GitHub Environment
+（`development`、`staging`、`production`）中配置
+`GRAFANA_ADMIN_PASSWORD` Secret，不需要登录服务器手动设置密码。
+应用容器内部监听 `8080`，Prometheus 通过 Kubernetes Service DNS
+`product-crud:8080` 抓取指标，应用对外 NodePort 仍为 `30080`。静态抓取
+示例如下：
 
 ```yaml
 scrape_configs:
   - job_name: product-crud
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<kubernetes-node-private-ip>:30080"]
+      - targets: ["product-crud:8080"]
 ```
 
-在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再将 Prometheus
-添加为 Grafana data source。生产环境应限制 metrics endpoint 只允许监控主机访问。
+在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再打开
+**Product CRUD** 文件夹中的自动创建看板。常用 PromQL 示例：
+
+```promql
+sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="product-crud"}[5m])))
+sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+up{job="product-crud"}
+```
+
+生产环境应限制 metrics endpoint 只允许监控主机访问。
 
 ## 排障
 

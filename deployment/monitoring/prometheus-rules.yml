@@ -1,0 +1,35 @@
+groups:
+  - name: product-crud
+    rules:
+      - alert: ProductCrudTargetDown
+        expr: up{job="product-crud"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Product CRUD metrics target is down
+          description: Prometheus cannot scrape the product-crud application.
+      - alert: ProductCrudHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job="product-crud",status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Product CRUD HTTP error rate is high
+          description: More than 5% of requests returned HTTP 5xx for five minutes.
+      - alert: ProductCrudHighJvmMemory
+        expr: |
+          sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+          /
+          sum(jvm_memory_max_bytes{job="product-crud",area="heap"}) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Product CRUD JVM heap usage is high
+          description: JVM heap usage is above 85% for ten minutes.

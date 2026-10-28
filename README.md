@@ -4,14 +4,16 @@
 
 This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
 It provides create, read, update, and delete operations for `Product` records and
-uses an H2 in-memory database, so databases like MySQL is not required .
+uses an H2 in-memory database, so databases like MySQL are not required.
 
 ## Contents
 
 - [Technology stack](#technology-stack)
+- [System architecture](#system-architecture)
 - [Run locally](#run-locally)
 - [API](#api)
 - [Deployment options](#deployment-options)
+- [Recommended hardware](#recommended-hardware)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
@@ -24,6 +26,28 @@ uses an H2 in-memory database, so databases like MySQL is not required .
 - H2, JUnit 5, and MockMvc
 - Docker, Docker Compose, and Kubernetes
 - GitHub Actions and GitHub Container Registry (GHCR)
+
+## System architecture
+
+The project can run as an all-in-one single-server stack. The application,
+Prometheus, and Grafana are deployed on the same host; Grafana is provisioned
+with Prometheus automatically, and Prometheus scrapes the application's
+`/actuator/prometheus` endpoint.
+
+```mermaid
+flowchart LR
+    User[User / Browser] --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot CRUD<br/>container :8080]
+    App --> H2[(H2 database)]
+    App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    Graf[Grafana<br/>NodePort :30030] --> Prom
+    CI[GitHub Actions] --> Registry[GHCR]
+    Registry --> App
+```
+
+Kubernetes is optional for orchestration. On a single Docker host, the
+monitoring installer below is idempotent: it installs Docker only when needed,
+and reuses existing Prometheus/Grafana containers and persistent volumes.
 
 ## Run locally
 
@@ -93,6 +117,7 @@ must be greater than zero, and `description` is limited to 500 characters.
 | Manual JAR | `scripts/manual/` | Java + systemd | Learning host-process deployment |
 | Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | Single-VM container deployment |
 | Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Deployment + NodePort | Container orchestration and rolling updates |
+| Monitoring | `deployment/monitoring/`, `scripts/monitoring/` | Prometheus + Grafana | Single-host observability |
 
 GitHub Actions builds the Docker image and publishes it to GHCR. Docker and
 Kubernetes deployments use the immutable `sha-<commit>` tag; deployment hosts
@@ -168,7 +193,8 @@ The script installs containerd, kubeadm, kubelet, kubectl, and Flannel; creates
 the cluster; and removes the control-plane `NoSchedule` taint so the same node
 can run application workloads. It is idempotent: installed dependencies are
 skipped and an existing `/etc/kubernetes/admin.conf` prevents a second
-`kubeadm init`.
+`kubeadm init`. During CI deployment, an unreachable cluster automatically
+triggers this single-node initialization flow on a new server.
 
 To install packages without initializing a cluster:
 
@@ -183,7 +209,8 @@ taints in a multi-node production setup.
 Important prerequisites:
 
 - Ubuntu with apt and systemd; run the script with `sudo`.
-- The CI SSH user must be able to run `kubectl cluster-info`.
+- The CI SSH user must have passwordless `sudo`; existing multi-node clusters
+  must also provide a working `kubectl cluster-info` context.
 - The default Pod CIDR is `10.244.0.0/16`; set `POD_NETWORK_CIDR` if it conflicts.
 - The default Kubernetes package stream is `v1.30`; set `K8S_MINOR_VERSION` to change it.
 - The script disables swap and configures bridge filtering, IPv4 forwarding, and systemd cgroups.
@@ -211,11 +238,15 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
-During CI deployment, if `kubectl` is missing, the deployment script
-automatically runs `install-kubernetes-ubuntu.sh` with passwordless `sudo`.
-This installs the Kubernetes prerequisites and client tools, but does not
-initialize or join a cluster. The SSH user must already have a working
-`~/.kube/config` for an initialized cluster.
+During CI deployment, if `kubectl` is missing, or if it cannot reach a cluster,
+the deployment script automatically runs
+`install-kubernetes-ubuntu.sh --init-control-plane` with passwordless `sudo`.
+On a new server this creates a single-node cluster, installs Flannel, copies
+`admin.conf` to the SSH user's kubeconfig, and removes the control-plane taint.
+An existing `/etc/kubernetes/admin.conf` prevents a second initialization.
+For an existing multi-node cluster, configure and verify the SSH user's
+`~/.kube/config` before deployment instead of relying on automatic
+single-node initialization.
 
 The Kubernetes deployment passes the Spring profile selected from the branch:
 `dev` uses `dev`, `staging` uses `staging`, and `main` uses `prod`.
@@ -240,6 +271,46 @@ sudo ufw allow 30080/tcp
 kubectl -n product-crud get service product-crud
 kubectl get nodes -o wide
 ```
+
+### 4. Prometheus and Grafana monitoring
+
+For Kubernetes, monitoring is deployed as Kubernetes resources by
+`scripts/kubernetes/deploy-kubernetes.sh`; Docker is not installed on the
+Kubernetes node. The workflow passes `GRAFANA_ADMIN_PASSWORD` from the GitHub
+Environment Secret, creates/updates the Kubernetes Secret, and applies
+`deployment/kubernetes/monitoring.yml`. Prometheus scrapes the internal
+`product-crud:8080` Service, so it does not depend on the external NodePort.
+
+Open Prometheus at `http://<K8S_VM_IP>:30090` and Grafana at
+`http://<K8S_VM_IP>:30030`. The application remains available at
+`http://<K8S_VM_IP>:30080`. Existing Deployments, Services, ConfigMaps, and
+the Grafana Secret are reconciled on every deployment. This learning setup uses
+`emptyDir` for monitoring data; deleting the Pods loses metrics history and
+Grafana data. Restrict ports `30030` and `30090` to trusted networks.
+
+The deployment automatically provisions a **Product CRUD / Spring Boot**
+dashboard with request rate, HTTP 5xx ratio, p95 latency, JVM heap, CPU, and
+thread panels. Prometheus also loads alert rules for an unavailable target,
+high HTTP 5xx rate, and high JVM heap usage. These rules are visible under
+**Prometheus -> Alerts**; this learning project does not include Alertmanager
+or an external notification channel yet.
+
+## Recommended hardware
+
+The following sizing is for a learning or small internal all-in-one
+deployment. It assumes one application instance, H2, 15 days of Prometheus
+retention, and light dashboard traffic.
+
+| Usage | CPU | Memory | Storage | Network |
+| --- | --- | --- | --- | --- |
+| Minimum / demo | 2 vCPU | 4 GB RAM | 30 GB SSD | 5 Mbps |
+| Recommended / small team | 4 vCPU | 8 GB RAM | 80 GB SSD | 10 Mbps |
+| Higher traffic | 8 vCPU | 16 GB RAM | 150+ GB SSD | 50 Mbps |
+
+Use SSD storage and leave at least 20% free space for container layers,
+Prometheus data, and logs. For production workloads, use an external database
+instead of H2, separate monitoring from the application host, and size
+Prometheus storage from the actual samples-per-second and retention period.
 
 ## GitHub Actions CI/CD
 
@@ -266,6 +337,7 @@ workflow can select the values for the target branch):
 | `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Kubernetes SSH deployment |
 | `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
 
 The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
 image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
@@ -274,20 +346,34 @@ SSO, authorize the PAT for SSO as well.
 
 ## Monitoring
 
-The application exposes `/actuator/prometheus`. Example static Prometheus
-configuration for Kubernetes:
+The GitHub Actions Kubernetes deployment automatically applies
+`deployment/kubernetes/monitoring.yml` after the application deployment.
+Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub Environment
+(`development`, `staging`, and `production`); no manual password command on
+the server is required. The application exposes `/actuator/prometheus`.
+Prometheus uses the Kubernetes Service DNS name `product-crud:8080`, not the
+external NodePort. For reference, the scrape configuration is:
 
 ```yaml
 scrape_configs:
   - job_name: product-crud
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<kubernetes-node-private-ip>:30080"]
+      - targets: ["product-crud:8080"]
 ```
 
 Confirm that the target is `UP` under **Prometheus -> Status -> Targets**, then
-add Prometheus as a Grafana data source. In production, restrict the metrics
-endpoint to the monitoring host.
+open the provisioned dashboard under the **Product CRUD** folder. Useful
+PromQL examples include:
+
+```promql
+sum(rate(http_server_requests_seconds_count{job="product-crud"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="product-crud"}[5m])))
+sum(jvm_memory_used_bytes{job="product-crud",area="heap"})
+up{job="product-crud"}
+```
+
+In production, restrict the metrics endpoint to the monitoring host.
 
 ## Troubleshooting
 

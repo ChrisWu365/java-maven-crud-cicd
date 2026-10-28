@@ -6,6 +6,7 @@ APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spr
 IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
 SPRING_PROFILE="${3:-prod}"
 MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
+MONITORING_DIR="${APP_DIR}/deployment/monitoring"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
 case "${SPRING_PROFILE}" in
@@ -27,17 +28,29 @@ if ! command -v kubectl >/dev/null 2>&1; then
     echo "kubectl is not installed and sudo is unavailable." >&2
     exit 1
   fi
-  echo "kubectl is not installed; installing Kubernetes prerequisites..."
-  if ! sudo -n bash "${INSTALL_SCRIPT}"; then
+  echo "kubectl is not installed; installing Kubernetes prerequisites and initializing a single-node cluster..."
+  if ! sudo -n bash "${INSTALL_SCRIPT}" --init-control-plane; then
     echo "Automatic Kubernetes installation failed. The SSH user must have passwordless sudo." >&2
     exit 1
   fi
 fi
 
 if ! kubectl cluster-info >/dev/null 2>&1; then
-  echo "kubectl cannot reach a Kubernetes cluster with the current kubeconfig." >&2
-  echo "Initialize or join a cluster, then verify: kubectl get nodes" >&2
-  exit 1
+  INSTALL_SCRIPT="${APP_DIR}/scripts/kubernetes/install-kubernetes-ubuntu.sh"
+  if [ ! -f "${INSTALL_SCRIPT}" ]; then
+    echo "Kubernetes installer not found: ${INSTALL_SCRIPT}" >&2
+    exit 1
+  fi
+  if ! sudo -n bash "${INSTALL_SCRIPT}" --init-control-plane; then
+    echo "Kubernetes cluster is unreachable and automatic single-node initialization failed." >&2
+    echo "For an existing multi-node cluster, configure kubeconfig and verify: kubectl get nodes" >&2
+    exit 1
+  fi
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    echo "Kubernetes cluster is still unreachable after initialization." >&2
+    echo "Verify the SSH user's kubeconfig: kubectl get nodes" >&2
+    exit 1
+  fi
 fi
 
 if [ -z "${GHCR_USERNAME:-}" ] || [ -z "${GHCR_TOKEN:-}" ]; then
@@ -46,10 +59,18 @@ if [ -z "${GHCR_USERNAME:-}" ] || [ -z "${GHCR_TOKEN:-}" ]; then
 fi
 
 if [ ! -f "${MANIFEST_DIR}/product-crud-deployment.yml" ] || \
-  [ ! -f "${MANIFEST_DIR}/product-crud-service.yml" ]; then
+  [ ! -f "${MANIFEST_DIR}/product-crud-service.yml" ] || \
+  [ ! -f "${MANIFEST_DIR}/monitoring.yml" ]; then
   echo "Kubernetes manifests not found in ${MANIFEST_DIR}." >&2
   exit 1
 fi
+for monitoring_file in prometheus-rules.yml grafana/dashboards/product-crud.json \
+  grafana/provisioning/dashboards/dashboards.yml; do
+  if [ ! -f "${MONITORING_DIR}/${monitoring_file}" ]; then
+    echo "Monitoring file not found: ${MONITORING_DIR}/${monitoring_file}" >&2
+    exit 1
+  fi
+done
 
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
@@ -62,6 +83,25 @@ sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|nam
   "${MANIFEST_DIR}/product-crud-deployment.yml" | kubectl apply -n "${NAMESPACE}" -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
+
+if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+  echo "GRAFANA_ADMIN_PASSWORD must be provided for Kubernetes monitoring." >&2
+  exit 1
+fi
+kubectl -n "${NAMESPACE}" create secret generic grafana-admin \
+  --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap prometheus-rules \
+  --from-file=prometheus-rules.yml="${MONITORING_DIR}/prometheus-rules.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboard-provider \
+  --from-file=dashboards.yml="${MONITORING_DIR}/grafana/provisioning/dashboards/dashboards.yml" \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "${NAMESPACE}" create configmap grafana-dashboards \
+  --from-file=product-crud.json="${MONITORING_DIR}/grafana/dashboards/product-crud.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+  "${MANIFEST_DIR}/monitoring.yml" | kubectl apply -n "${NAMESPACE}" -f -
 
 if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=180s; then
   echo "Deployment rollout failed. Collecting Kubernetes diagnostics..." >&2
@@ -78,4 +118,6 @@ if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=
   done
   exit 1
 fi
+kubectl -n "${NAMESPACE}" rollout status deployment/prometheus --timeout=180s
+kubectl -n "${NAMESPACE}" rollout status deployment/grafana --timeout=180s
 kubectl -n "${NAMESPACE}" get deployment,service,pods -o wide
