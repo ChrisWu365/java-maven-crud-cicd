@@ -21,11 +21,15 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 
 ## Technology stack
 
-- Java 8 and Spring Boot 2.7
+- Java 8, Maven, and Spring Boot 2.7
 - Spring Web, Spring Data JPA, and Bean Validation
+- Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator and Micrometer Prometheus
 - H2, JUnit 5, and MockMvc
-- Docker, Docker Compose, and Kubernetes
+- Docker and Docker Compose
+- Kubernetes with containerd, kubeadm, kubelet, kubectl, and Flannel
+- Prometheus and Grafana for metrics, dashboards, and alert rules
+- Azure Virtual Machines and Network Security Groups
 - GitHub Actions and GitHub Container Registry (GHCR)
 
 ## System architecture
@@ -49,6 +53,11 @@ flowchart LR
 Kubernetes is optional for orchestration. On a single Docker host, the
 monitoring installer below is idempotent: it installs Docker only when needed,
 and reuses existing Prometheus/Grafana containers and persistent volumes.
+
+The application listens on container port `8080`. Kubernetes exposes it through
+NodePort `30080`; Prometheus uses NodePort `30090`, and Grafana uses NodePort
+`30030`. Prometheus scrapes `/actuator/prometheus`, while Grafana reads the
+metrics from Prometheus and provisions the application dashboard automatically.
 
 ## Screenshots
 
@@ -326,6 +335,19 @@ thread panels. Prometheus also loads alert rules for an unavailable target,
 high HTTP 5xx rate, and high JVM heap usage. These rules are visible under
 **Prometheus -> Alerts**; this learning project does not include Alertmanager
 or an external notification channel yet.
+
+For a Docker Compose host, deploy monitoring independently after the application
+is running:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD=<strong-password>
+export PROMETHEUS_TARGET=host.docker.internal:8080
+sudo -E bash scripts/monitoring/deploy-monitoring.sh /home/<user>/app
+```
+
+Docker monitoring is available at `http://<DOCKER_VM_IP>:9090` and
+`http://<DOCKER_VM_IP>:3000`. The script is idempotent and uses named volumes
+for Prometheus and Grafana data.
 
 ## Recommended hardware
 
