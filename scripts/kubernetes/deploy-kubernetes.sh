@@ -46,7 +46,8 @@ if [ -z "${GHCR_USERNAME:-}" ] || [ -z "${GHCR_TOKEN:-}" ]; then
 fi
 
 if [ ! -f "${MANIFEST_DIR}/product-crud-deployment.yml" ] || \
-  [ ! -f "${MANIFEST_DIR}/product-crud-service.yml" ]; then
+  [ ! -f "${MANIFEST_DIR}/product-crud-service.yml" ] || \
+  [ ! -f "${MANIFEST_DIR}/monitoring.yml" ]; then
   echo "Kubernetes manifests not found in ${MANIFEST_DIR}." >&2
   exit 1
 fi
@@ -63,6 +64,16 @@ sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|nam
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
 
+if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+  echo "GRAFANA_ADMIN_PASSWORD must be provided for Kubernetes monitoring." >&2
+  exit 1
+fi
+kubectl -n "${NAMESPACE}" create secret generic grafana-admin \
+  --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+  "${MANIFEST_DIR}/monitoring.yml" | kubectl apply -n "${NAMESPACE}" -f -
+
 if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=180s; then
   echo "Deployment rollout failed. Collecting Kubernetes diagnostics..." >&2
   kubectl -n "${NAMESPACE}" get deployment/product-crud -o wide >&2 || true
@@ -78,4 +89,6 @@ if ! kubectl -n "${NAMESPACE}" rollout status deployment/product-crud --timeout=
   done
   exit 1
 fi
+kubectl -n "${NAMESPACE}" rollout status deployment/prometheus --timeout=180s
+kubectl -n "${NAMESPACE}" rollout status deployment/grafana --timeout=180s
 kubectl -n "${NAMESPACE}" get deployment,service,pods -o wide

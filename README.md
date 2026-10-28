@@ -39,8 +39,8 @@ flowchart LR
     User[User / Browser] --> K8s[Kubernetes NodePort<br/>:30080]
     K8s --> App[Spring Boot CRUD<br/>container :8080]
     App --> H2[(H2 database)]
-    App -- /actuator/prometheus --> Prom[Prometheus<br/>:9090]
-    Graf[Grafana<br/>:3000] --> Prom
+    App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
 ```
@@ -268,29 +268,19 @@ kubectl get nodes -o wide
 
 ### 4. Prometheus and Grafana monitoring
 
-On the same Ubuntu host as the Docker Compose application, set a strong
-Grafana password and run:
+For Kubernetes, monitoring is deployed as Kubernetes resources by
+`scripts/kubernetes/deploy-kubernetes.sh`; Docker is not installed on the
+Kubernetes node. The workflow passes `GRAFANA_ADMIN_PASSWORD` from the GitHub
+Environment Secret, creates/updates the Kubernetes Secret, and applies
+`deployment/kubernetes/monitoring.yml`. Prometheus scrapes the internal
+`product-crud:8080` Service, so it does not depend on the external NodePort.
 
-```bash
-sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
-  bash scripts/monitoring/deploy-monitoring.sh <app-directory>
-```
-
-The script checks Docker and the Compose plugin before installing them, then
-checks whether the Prometheus and Grafana containers already exist. Existing
-containers and named volumes are reused; the command is safe to run again.
-Prometheus scrapes the published application port at
-`host.docker.internal:8080` for Docker deployments, or the Kubernetes node's
-`<node-ip>:30080` endpoint for Kubernetes deployments. The Grafana Prometheus
-data source is provisioned automatically.
-
-Open `http://<host>:9090` for Prometheus and `http://<host>:3000` for Grafana.
-The default Grafana user is `admin` unless `GRAFANA_ADMIN_USER` is set. If the
-application is deployed through Kubernetes instead, edit
-`deployment/monitoring/prometheus.yml` and replace the target with the
-Kubernetes service address (for example `<node-private-ip>:30080`) before
-starting the monitoring stack. Restrict ports `3000` and `9090` to trusted
-networks in the cloud security group and host firewall.
+Open Prometheus at `http://<K8S_VM_IP>:30090` and Grafana at
+`http://<K8S_VM_IP>:30030`. The application remains available at
+`http://<K8S_VM_IP>:30080`. Existing Deployments, Services, ConfigMaps, and
+the Grafana Secret are reconciled on every deployment. This learning setup uses
+`emptyDir` for monitoring data; deleting the Pods loses metrics history and
+Grafana data. Restrict ports `30030` and `30090` to trusted networks.
 
 ## Recommended hardware
 
@@ -344,19 +334,20 @@ SSO, authorize the PAT for SSO as well.
 ## Monitoring
 
 The GitHub Actions deployment automatically runs
-`scripts/monitoring/deploy-monitoring.sh` after the application
-deployment. Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub
-Environment (`development`, `staging`, and `production`); no manual password
-command on the server is required. The application exposes
-`/actuator/prometheus`. For Kubernetes, an equivalent static Prometheus
-configuration is:
+The GitHub Actions Kubernetes deployment automatically applies
+`deployment/kubernetes/monitoring.yml` after the application deployment.
+Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub Environment
+(`development`, `staging`, and `production`); no manual password command on
+the server is required. The application exposes `/actuator/prometheus`.
+Prometheus uses the Kubernetes Service DNS name `product-crud:8080`, not the
+external NodePort. For reference, the scrape configuration is:
 
 ```yaml
 scrape_configs:
   - job_name: product-crud
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<kubernetes-node-private-ip>:30080"]
+      - targets: ["product-crud:8080"]
 ```
 
 Confirm that the target is `UP` under **Prometheus -> Status -> Targets**, then

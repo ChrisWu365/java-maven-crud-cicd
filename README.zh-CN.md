@@ -37,8 +37,8 @@ flowchart LR
     User[用户 / 浏览器] --> K8s[Kubernetes NodePort<br/>:30080]
     K8s --> App[Spring Boot CRUD<br/>容器 :8080]
     App --> H2[(H2 数据库)]
-    App -- /actuator/prometheus --> Prom[Prometheus<br/>:9090]
-    Graf[Grafana<br/>:3000] --> Prom
+    App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
 ```
@@ -246,30 +246,18 @@ kubectl get nodes -o wide
 
 ### 4. Prometheus 和 Grafana 监控
 
-GitHub Actions 会在应用部署后自动部署监控。请在每个 GitHub Environment
-（`development`、`staging`、`production`）中创建
-`GRAFANA_ADMIN_PASSWORD` Secret，工作流会通过 SSH 自动传递给部署脚本，
-不需要再登录服务器手动设置密码。
+Kubernetes 部署会通过 `scripts/kubernetes/deploy-kubernetes.sh` 直接创建
+监控资源，不会在 Kubernetes 节点安装 Docker。工作流从 GitHub Environment
+Secret 读取 `GRAFANA_ADMIN_PASSWORD`，创建或更新 Kubernetes Secret，然后
+应用 `deployment/kubernetes/monitoring.yml`。Prometheus 抓取集群内部的
+`product-crud:8080` Service，不依赖外部 NodePort。
 
-如果需要手动执行（例如首次准备服务器），才使用：
-
-```bash
-sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
-  bash scripts/monitoring/deploy-monitoring.sh <app-directory>
-```
-
-脚本会先检查 Docker 和 Compose 插件：缺少时才安装；随后检查 Prometheus
-和 Grafana 容器是否已存在。已存在的容器和命名卷会复用，重复执行不会
-重复安装。Docker 部署默认抓取主机发布的应用端口
-`host.docker.internal:8080`；Kubernetes 部署由工作流自动设置为节点对外
-的 `<node-ip>:30080`，Grafana 的 Prometheus 数据源会自动配置。
-
-Prometheus 地址是 `http://<host>:9090`，Grafana 地址是
-`http://<host>:3000`。默认 Grafana 用户名为 `admin`，也可以通过
-`GRAFANA_ADMIN_USER` 修改。如果应用通过 Kubernetes 部署，请在启动监控
-前编辑 `deployment/monitoring/prometheus.yml`，将 target 改为 Kubernetes
-服务地址（例如 `<node-private-ip>:30080`）。建议在云安全组和主机防火墙中
-只向可信网络开放 `3000` 和 `9090`。
+Prometheus 地址是 `http://<K8S_VM_IP>:30090`，Grafana 地址是
+`http://<K8S_VM_IP>:30030`，应用地址仍是
+`http://<K8S_VM_IP>:30080`。Deployment、Service、ConfigMap 和 Grafana
+Secret 每次部署都会幂等更新。本学习配置使用 `emptyDir` 保存监控数据，
+Pod 删除后 Prometheus 历史数据和 Grafana 数据会丢失；请只向可信网络开放
+`30030` 和 `30090`。
 
 ## 建议硬件配置
 
@@ -333,20 +321,20 @@ kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=20
 
 ## 监控
 
-GitHub Actions 会在应用部署后自动执行
-`scripts/monitoring/deploy-monitoring.sh`。请在每个 GitHub
-Environment（`development`、`staging`、`production`）中配置
-`GRAFANA_ADMIN_PASSWORD` Secret，不需要再登录服务器手动执行设置密码。
-应用容器内部监听 `8080`；Kubernetes 通过 NodePort `30080` 对外提供应用，
-Prometheus 应抓取 `30080`，而不是直接访问容器内部端口。应用暴露
-`/actuator/prometheus`，Kubernetes 静态抓取示例如下：
+GitHub Actions 会在应用部署后自动应用
+`deployment/kubernetes/monitoring.yml`。请在每个 GitHub Environment
+（`development`、`staging`、`production`）中配置
+`GRAFANA_ADMIN_PASSWORD` Secret，不需要登录服务器手动设置密码。
+应用容器内部监听 `8080`，Prometheus 通过 Kubernetes Service DNS
+`product-crud:8080` 抓取指标，应用对外 NodePort 仍为 `30080`。静态抓取
+示例如下：
 
 ```yaml
 scrape_configs:
   - job_name: product-crud
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["<kubernetes-node-private-ip>:30080"]
+      - targets: ["product-crud:8080"]
 ```
 
 在 Prometheus 的 **Status -> Targets** 确认 target 为 `UP`，再将 Prometheus

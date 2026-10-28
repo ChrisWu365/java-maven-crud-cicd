@@ -150,7 +150,7 @@ jobs:
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          source: "deployment/kubernetes,deployment/monitoring,scripts/docker,scripts/kubernetes,scripts/monitoring"
+          source: "deployment/kubernetes,scripts/kubernetes"
           target: "/home/${{ secrets.K8S_VM_USER }}/app/"
           strip_components: 0
       - name: Deploy image over SSH
@@ -162,15 +162,12 @@ jobs:
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-          PROMETHEUS_TARGET: "${{ secrets.K8S_VM_IP }}:30080"
         with:
           host: ${{ secrets.K8S_VM_IP }}
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,PROMETHEUS_TARGET
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD
           script: |
-            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"
-            sudo -n env GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
-              PROMETHEUS_TARGET="${PROMETHEUS_TARGET}" \
-              bash "${APP_DIR}/scripts/monitoring/deploy-monitoring.sh" "${APP_DIR}"
+            GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
+              bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"
