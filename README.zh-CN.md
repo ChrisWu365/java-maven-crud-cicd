@@ -192,6 +192,14 @@ bash scripts/kubernetes/deploy-kubernetes.sh \
   /home/<user>/app ghcr.io/<owner>/<repo>:sha-<commit>
 ```
 
+CI 部署时，如果服务器没有安装 `kubectl`，部署脚本会自动使用免密码
+`sudo` 执行 `install-kubernetes-ubuntu.sh`，安装 Kubernetes 前置依赖和
+客户端工具。但该操作不会自动初始化集群或加入已有集群；SSH 用户仍必须
+拥有已初始化集群对应的可用 `~/.kube/config`。
+
+Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
+`staging` 使用 `staging`，`main` 使用 `prod`。
+
 `GHCR_TOKEN` 至少需要 `read:packages`。不要把短生命周期的
 `GITHUB_TOKEN` 当作节点长期使用的 pull secret。
 
@@ -214,13 +222,22 @@ kubectl get nodes -o wide
 
 ## GitHub Actions CI/CD
 
-工作流文件是 `.github/workflows/cicd.yml`：
+工作流文件是 `.github/workflows/cicd.yml`，分支与环境的对应关系如下：
 
-1. Pull request 和 `main` push 执行 Maven 测试及静态分析。
-2. `main` push 或手动运行时构建并推送 GHCR 镜像。
-3. `main` push 默认通过 SSH 部署 Kubernetes；手动运行可选择 Kubernetes 或 Docker。
+| 分支 | GitHub Environment | 行为 |
+| --- | --- | --- |
+| `dev` | `development` | Pull request 执行 CI；push 构建、推送镜像并部署 |
+| `staging` | `staging` | Pull request 执行 CI；push 构建、推送镜像并部署 |
+| `main` | `production` | Pull request 执行 CI；push 构建并推送镜像，部署前等待环境审批 |
 
-配置以下 repository secrets：
+Pull request 不会触发部署。请在 **Settings -> Environments ->
+production** 中配置 Required reviewers；这样部署 job 会在生产部署前暂停，
+直到授权 reviewer 批准。建议在三个 environment 中分别配置同名的环境级
+secrets，让每个环境使用各自的主机和 GHCR 凭据。手动运行仍可选择
+Kubernetes 或 Docker。
+
+请在每个 GitHub Environment 中配置以下 secrets（使用相同名称，workflow
+会根据目标分支读取对应环境的值）：
 
 | Secret | 用途 |
 | --- | --- |

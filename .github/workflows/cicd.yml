@@ -2,9 +2,9 @@ name: Java CI/CD with Docker
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "dev", "staging", "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "dev", "staging", "main" ]
   workflow_dispatch:
     inputs:
       deploy_target:
@@ -41,7 +41,7 @@ jobs:
 
   publish:
     name: Publish Docker image
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
     needs: ci
     runs-on: ubuntu-latest
     permissions:
@@ -120,9 +120,16 @@ jobs:
 
   deploy-kubernetes:
     name: Deploy to Kubernetes
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes')
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'))
     needs: publish
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
+    concurrency:
+      group: deployment-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      SPRING_PROFILE: ${{ github.ref_name == 'dev' && 'dev' || github.ref_name == 'staging' && 'staging' || 'prod' }}
     permissions:
       contents: read
       packages: read
@@ -144,6 +151,7 @@ jobs:
         env:
           APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
           IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
+          SPRING_PROFILE: ${{ env.SPRING_PROFILE }}
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
         with:
@@ -151,6 +159,6 @@ jobs:
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN
           script: |
-            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}"
+            bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"

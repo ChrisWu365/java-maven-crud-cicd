@@ -2,14 +2,36 @@
 
 set -eu
 
-APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference>}"
-IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference>}"
+APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
+IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
+SPRING_PROFILE="${3:-prod}"
 MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
 
+case "${SPRING_PROFILE}" in
+  dev|staging|prod)
+    ;;
+  *)
+    echo "Unsupported Spring profile: ${SPRING_PROFILE}. Use dev, staging, or prod." >&2
+    exit 1
+    ;;
+esac
+
 if ! command -v kubectl >/dev/null 2>&1; then
-  echo "kubectl is not installed. Run scripts/kubernetes/install-kubernetes-ubuntu.sh first." >&2
-  exit 1
+  INSTALL_SCRIPT="${APP_DIR}/scripts/kubernetes/install-kubernetes-ubuntu.sh"
+  if [ ! -f "${INSTALL_SCRIPT}" ]; then
+    echo "Kubernetes installer not found: ${INSTALL_SCRIPT}" >&2
+    exit 1
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "kubectl is not installed and sudo is unavailable." >&2
+    exit 1
+  fi
+  echo "kubectl is not installed; installing Kubernetes prerequisites..."
+  if ! sudo -n bash "${INSTALL_SCRIPT}"; then
+    echo "Automatic Kubernetes installation failed. The SSH user must have passwordless sudo." >&2
+    exit 1
+  fi
 fi
 
 if ! kubectl cluster-info >/dev/null 2>&1; then
@@ -36,7 +58,7 @@ kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
   --docker-password="${GHCR_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-sed "s|IMAGE_REF|${IMAGE_REF}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-deployment.yml" | kubectl apply -n "${NAMESPACE}" -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
