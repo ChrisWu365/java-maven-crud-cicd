@@ -8,9 +8,11 @@
 ## 目录
 
 - [技术栈](#技术栈)
+- [系统架构](#系统架构)
 - [本地运行](#本地运行)
 - [API](#api)
 - [部署方式](#部署方式)
+- [建议硬件配置](#建议硬件配置)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [监控](#监控)
 - [排障](#排障)
@@ -23,6 +25,27 @@
 - H2、JUnit 5、MockMvc
 - Docker、Docker Compose、Kubernetes
 - GitHub Actions、GHCR
+
+## 系统架构
+
+本项目可以作为单服务器 all-in-one 完整运行：应用、Prometheus 和 Grafana
+部署在同一台主机上；Grafana 会自动配置 Prometheus 数据源，Prometheus
+抓取应用的 `/actuator/prometheus` 指标接口。
+
+```mermaid
+flowchart LR
+    User[用户 / 浏览器] --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot CRUD<br/>容器 :8080]
+    App --> H2[(H2 数据库)]
+    App -- /actuator/prometheus --> Prom[Prometheus<br/>:9090]
+    Graf[Grafana<br/>:3000] --> Prom
+    CI[GitHub Actions] --> Registry[GHCR]
+    Registry --> App
+```
+
+Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
+安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
+Grafana 容器和持久化卷。
 
 ## 本地运行
 
@@ -91,6 +114,7 @@ mvn clean verify
 | 手动 JAR | `scripts/manual/` | Java + systemd | 学习主机进程部署 |
 | Docker | `deployment/docker/`、`scripts/docker/` | Docker Compose | 单机容器部署 |
 | Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Deployment + NodePort | 滚动发布和容器编排 |
+| 监控 | `deployment/monitoring/`、`scripts/monitoring/` | Prometheus + Grafana | 单机监控和可视化 |
 
 Docker 镜像由 GitHub Actions 构建并推送到 GHCR。Docker 和 Kubernetes
 都使用不可变的 `sha-<commit>` 标签，不会在部署主机重新编译代码。
@@ -220,6 +244,48 @@ kubectl -n product-crud get service product-crud
 kubectl get nodes -o wide
 ```
 
+### 4. Prometheus 和 Grafana 监控
+
+GitHub Actions 会在应用部署后自动部署监控。请在每个 GitHub Environment
+（`development`、`staging`、`production`）中创建
+`GRAFANA_ADMIN_PASSWORD` Secret，工作流会通过 SSH 自动传递给部署脚本，
+不需要再登录服务器手动设置密码。
+
+如果需要手动执行（例如首次准备服务器），才使用：
+
+```bash
+sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
+  bash scripts/monitoring/install-monitoring-ubuntu.sh
+```
+
+脚本会先检查 Docker 和 Compose 插件：缺少时才安装；随后检查 Prometheus
+和 Grafana 容器是否已存在。已存在的容器和命名卷会复用，重复执行不会
+重复安装。Docker 部署默认抓取主机发布的应用端口
+`host.docker.internal:8080`；Kubernetes 部署由工作流自动设置为节点对外
+的 `<node-ip>:30080`，Grafana 的 Prometheus 数据源会自动配置。
+
+Prometheus 地址是 `http://<host>:9090`，Grafana 地址是
+`http://<host>:3000`。默认 Grafana 用户名为 `admin`，也可以通过
+`GRAFANA_ADMIN_USER` 修改。如果应用通过 Kubernetes 部署，请在启动监控
+前编辑 `deployment/monitoring/prometheus.yml`，将 target 改为 Kubernetes
+服务地址（例如 `<node-private-ip>:30080`）。建议在云安全组和主机防火墙中
+只向可信网络开放 `3000` 和 `9090`。
+
+## 建议硬件配置
+
+以下配置适合学习或小型内部 all-in-one 部署，假设一个应用实例、H2 数据库、
+Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
+
+| 用途 | CPU | 内存 | 存储 | 网络 |
+| --- | --- | --- | --- | --- |
+| 最低 / 演示 | 2 vCPU | 4 GB RAM | 30 GB SSD | 5 Mbps |
+| 推荐 / 小团队 | 4 vCPU | 8 GB RAM | 80 GB SSD | 10 Mbps |
+| 较高流量 | 8 vCPU | 16 GB RAM | 150+ GB SSD | 50 Mbps |
+
+建议使用 SSD，并至少保留 20% 空间给容器镜像层、Prometheus 数据和日志。
+生产环境应使用外部数据库，最好将监控与应用拆分到不同主机，并根据实际
+指标采样速率和保留周期规划 Prometheus 存储容量。
+
 ## GitHub Actions CI/CD
 
 工作流文件是 `.github/workflows/cicd.yml`，分支与环境的对应关系如下：
@@ -244,6 +310,7 @@ Kubernetes 或 Docker。
 | `K8S_VM_IP`、`K8S_VM_USER`、`K8S_VM_KEY` | Kubernetes SSH |
 | `K8S_GHCR_USERNAME`、`K8S_GHCR_TOKEN` | Kubernetes 拉取 GHCR 镜像 |
 | `DOCKER_VM_IP`、`DOCKER_VM_USER`、`DOCKER_VM_KEY` | Docker Compose SSH |
+| `GRAFANA_ADMIN_PASSWORD` | 监控部署使用的 Grafana 管理员密码 |
 
 `publish` job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像；
 Kubernetes 节点使用单独的 `K8S_GHCR_TOKEN` 拉取镜像。private GHCR package
@@ -266,7 +333,13 @@ kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=20
 
 ## 监控
 
-应用暴露 `/actuator/prometheus`。Kubernetes 静态抓取示例：
+GitHub Actions 会在应用部署后自动执行
+`scripts/monitoring/install-monitoring-ubuntu.sh`。请在每个 GitHub
+Environment（`development`、`staging`、`production`）中配置
+`GRAFANA_ADMIN_PASSWORD` Secret，不需要再登录服务器手动执行设置密码。
+应用容器内部监听 `8080`；Kubernetes 通过 NodePort `30080` 对外提供应用，
+Prometheus 应抓取 `30080`，而不是直接访问容器内部端口。应用暴露
+`/actuator/prometheus`，Kubernetes 静态抓取示例如下：
 
 ```yaml
 scrape_configs:

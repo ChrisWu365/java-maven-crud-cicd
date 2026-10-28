@@ -4,14 +4,16 @@
 
 This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
 It provides create, read, update, and delete operations for `Product` records and
-uses an H2 in-memory database, so databases like MySQL is not required .
+uses an H2 in-memory database, so databases like MySQL are not required.
 
 ## Contents
 
 - [Technology stack](#technology-stack)
+- [System architecture](#system-architecture)
 - [Run locally](#run-locally)
 - [API](#api)
 - [Deployment options](#deployment-options)
+- [Recommended hardware](#recommended-hardware)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [Monitoring](#monitoring)
 - [Troubleshooting](#troubleshooting)
@@ -24,6 +26,28 @@ uses an H2 in-memory database, so databases like MySQL is not required .
 - H2, JUnit 5, and MockMvc
 - Docker, Docker Compose, and Kubernetes
 - GitHub Actions and GitHub Container Registry (GHCR)
+
+## System architecture
+
+The project can run as an all-in-one single-server stack. The application,
+Prometheus, and Grafana are deployed on the same host; Grafana is provisioned
+with Prometheus automatically, and Prometheus scrapes the application's
+`/actuator/prometheus` endpoint.
+
+```mermaid
+flowchart LR
+    User[User / Browser] --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot CRUD<br/>container :8080]
+    App --> H2[(H2 database)]
+    App -- /actuator/prometheus --> Prom[Prometheus<br/>:9090]
+    Graf[Grafana<br/>:3000] --> Prom
+    CI[GitHub Actions] --> Registry[GHCR]
+    Registry --> App
+```
+
+Kubernetes is optional for orchestration. On a single Docker host, the
+monitoring installer below is idempotent: it installs Docker only when needed,
+and reuses existing Prometheus/Grafana containers and persistent volumes.
 
 ## Run locally
 
@@ -93,6 +117,7 @@ must be greater than zero, and `description` is limited to 500 characters.
 | Manual JAR | `scripts/manual/` | Java + systemd | Learning host-process deployment |
 | Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | Single-VM container deployment |
 | Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Deployment + NodePort | Container orchestration and rolling updates |
+| Monitoring | `deployment/monitoring/`, `scripts/monitoring/` | Prometheus + Grafana | Single-host observability |
 
 GitHub Actions builds the Docker image and publishes it to GHCR. Docker and
 Kubernetes deployments use the immutable `sha-<commit>` tag; deployment hosts
@@ -241,6 +266,49 @@ kubectl -n product-crud get service product-crud
 kubectl get nodes -o wide
 ```
 
+### 4. Prometheus and Grafana monitoring
+
+On the same Ubuntu host as the Docker Compose application, set a strong
+Grafana password and run:
+
+```bash
+sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
+  bash scripts/monitoring/install-monitoring-ubuntu.sh
+```
+
+The script checks Docker and the Compose plugin before installing them, then
+checks whether the Prometheus and Grafana containers already exist. Existing
+containers and named volumes are reused; the command is safe to run again.
+Prometheus scrapes the published application port at
+`host.docker.internal:8080` for Docker deployments, or the Kubernetes node's
+`<node-ip>:30080` endpoint for Kubernetes deployments. The Grafana Prometheus
+data source is provisioned automatically.
+
+Open `http://<host>:9090` for Prometheus and `http://<host>:3000` for Grafana.
+The default Grafana user is `admin` unless `GRAFANA_ADMIN_USER` is set. If the
+application is deployed through Kubernetes instead, edit
+`deployment/monitoring/prometheus.yml` and replace the target with the
+Kubernetes service address (for example `<node-private-ip>:30080`) before
+starting the monitoring stack. Restrict ports `3000` and `9090` to trusted
+networks in the cloud security group and host firewall.
+
+## Recommended hardware
+
+The following sizing is for a learning or small internal all-in-one
+deployment. It assumes one application instance, H2, 15 days of Prometheus
+retention, and light dashboard traffic.
+
+| Usage | CPU | Memory | Storage | Network |
+| --- | --- | --- | --- | --- |
+| Minimum / demo | 2 vCPU | 4 GB RAM | 30 GB SSD | 5 Mbps |
+| Recommended / small team | 4 vCPU | 8 GB RAM | 80 GB SSD | 10 Mbps |
+| Higher traffic | 8 vCPU | 16 GB RAM | 150+ GB SSD | 50 Mbps |
+
+Use SSD storage and leave at least 20% free space for container layers,
+Prometheus data, and logs. For production workloads, use an external database
+instead of H2, separate monitoring from the application host, and size
+Prometheus storage from the actual samples-per-second and retention period.
+
 ## GitHub Actions CI/CD
 
 The workflow is `.github/workflows/cicd.yml`. The branch-to-environment mapping
@@ -266,6 +334,7 @@ workflow can select the values for the target branch):
 | `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Kubernetes SSH deployment |
 | `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
 
 The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
 image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
@@ -274,8 +343,13 @@ SSO, authorize the PAT for SSO as well.
 
 ## Monitoring
 
-The application exposes `/actuator/prometheus`. Example static Prometheus
-configuration for Kubernetes:
+The GitHub Actions deployment automatically runs
+`scripts/monitoring/install-monitoring-ubuntu.sh` after the application
+deployment. Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub
+Environment (`development`, `staging`, and `production`); no manual password
+command on the server is required. The application exposes
+`/actuator/prometheus`. For Kubernetes, an equivalent static Prometheus
+configuration is:
 
 ```yaml
 scrape_configs:

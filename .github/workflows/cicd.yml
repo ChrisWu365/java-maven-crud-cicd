@@ -86,6 +86,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'docker'
     needs: publish
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
     permissions:
       contents: read
       packages: read
@@ -99,7 +101,7 @@ jobs:
           username: ${{ secrets.DOCKER_VM_USER }}
           key: ${{ secrets.DOCKER_VM_KEY }}
           port: 22
-          source: "deployment/docker,scripts/docker"
+          source: "deployment/docker,deployment/monitoring,scripts/docker,scripts/monitoring"
           target: "/home/${{ secrets.DOCKER_VM_USER }}/app/"
           strip_components: 0
       - name: Deploy image over SSH
@@ -109,14 +111,19 @@ jobs:
           IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          PROMETHEUS_TARGET: host.docker.internal:8080
         with:
           host: ${{ secrets.DOCKER_VM_IP }}
           username: ${{ secrets.DOCKER_VM_USER }}
           key: ${{ secrets.DOCKER_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN
+          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,PROMETHEUS_TARGET
           script: |
             bash "${APP_DIR}/scripts/docker/deploy-docker.sh" "${APP_DIR}" "${IMAGE_REF}"
+            sudo -n env GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
+              PROMETHEUS_TARGET="${PROMETHEUS_TARGET}" \
+              bash "${APP_DIR}/scripts/monitoring/install-monitoring-ubuntu.sh"
 
   deploy-kubernetes:
     name: Deploy to Kubernetes
@@ -143,7 +150,7 @@ jobs:
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          source: "deployment/kubernetes,scripts/kubernetes"
+          source: "deployment/kubernetes,deployment/monitoring,scripts/kubernetes,scripts/monitoring"
           target: "/home/${{ secrets.K8S_VM_USER }}/app/"
           strip_components: 0
       - name: Deploy image over SSH
@@ -154,11 +161,16 @@ jobs:
           SPRING_PROFILE: ${{ env.SPRING_PROFILE }}
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          PROMETHEUS_TARGET: "${{ secrets.K8S_VM_IP }}:30080"
         with:
           host: ${{ secrets.K8S_VM_IP }}
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,PROMETHEUS_TARGET
           script: |
             bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"
+            sudo -n env GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
+              PROMETHEUS_TARGET="${PROMETHEUS_TARGET}" \
+              bash "${APP_DIR}/scripts/monitoring/install-monitoring-ubuntu.sh"
