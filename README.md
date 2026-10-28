@@ -273,7 +273,7 @@ Grafana password and run:
 
 ```bash
 sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
-  bash scripts/monitoring/install-monitoring-ubuntu.sh
+  bash scripts/monitoring/deploy-monitoring.sh <app-directory>
 ```
 
 The script checks Docker and the Compose plugin before installing them, then
@@ -344,7 +344,7 @@ SSO, authorize the PAT for SSO as well.
 ## Monitoring
 
 The GitHub Actions deployment automatically runs
-`scripts/monitoring/install-monitoring-ubuntu.sh` after the application
+`scripts/monitoring/deploy-monitoring.sh` after the application
 deployment. Store `GRAFANA_ADMIN_PASSWORD` as a secret in each GitHub
 Environment (`development`, `staging`, and `production`); no manual password
 command on the server is required. The application exposes

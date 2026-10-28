@@ -255,7 +255,7 @@ GitHub Actions 会在应用部署后自动部署监控。请在每个 GitHub Env
 
 ```bash
 sudo GRAFANA_ADMIN_PASSWORD='<strong-password>' \
-  bash scripts/monitoring/install-monitoring-ubuntu.sh
+  bash scripts/monitoring/deploy-monitoring.sh <app-directory>
 ```
 
 脚本会先检查 Docker 和 Compose 插件：缺少时才安装；随后检查 Prometheus
@@ -334,7 +334,7 @@ kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=20
 ## 监控
 
 GitHub Actions 会在应用部署后自动执行
-`scripts/monitoring/install-monitoring-ubuntu.sh`。请在每个 GitHub
+`scripts/monitoring/deploy-monitoring.sh`。请在每个 GitHub
 Environment（`development`、`staging`、`production`）中配置
 `GRAFANA_ADMIN_PASSWORD` Secret，不需要再登录服务器手动执行设置密码。
 应用容器内部监听 `8080`；Kubernetes 通过 NodePort `30080` 对外提供应用，
