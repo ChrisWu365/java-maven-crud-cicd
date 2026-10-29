@@ -106,6 +106,7 @@ kubectl -n "${NAMESPACE}" create secret generic inspection-secrets \
   --dry-run=client -o yaml | kubectl apply -f -
 sed "s|INSPECTION_API_IMAGE|${INSPECTION_API_IMAGE}|g; s|INSPECTION_WEB_IMAGE|${INSPECTION_WEB_IMAGE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/inspection.yml" | kubectl apply -n "${NAMESPACE}" -f -
+kubectl -n "${NAMESPACE}" rollout restart deployment inspection-api
 
 if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
   echo "GRAFANA_ADMIN_PASSWORD must be provided for Kubernetes monitoring." >&2
