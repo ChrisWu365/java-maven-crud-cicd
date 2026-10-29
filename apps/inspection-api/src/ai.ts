@@ -51,9 +51,11 @@ export async function createObservationSuggestion(
   if (!response.ok) {
     throw new Error(`AI provider request failed with status ${response.status}`);
   }
-  const body = await response.json() as { summary?: string };
+  const body = await response.json() as { steps?: Array<{ type: string; content?: Array<{ text: string }> }> };
+  const modelOutputStep = body.steps?.find(step => step.type === 'model_output');
+  const textContent = modelOutputStep?.content?.map(item => item.text).join(' ') ?? '';
   return {
-    summary: body.summary ?? 'The AI provider returned no summary. A qualified inspector must review the evidence.',
+    summary: textContent || 'The AI provider returned no summary. A qualified inspector must review the evidence.',
     source: 'provider',
     requiresReview: true
   };
