@@ -362,6 +362,10 @@ inspection API 只作为内部 Service 运行；React/Nginx 会把 `/api`、`/he
 
 `INSPECTION_JWT_SECRET` 必填；三个 AI secret 可以为空，此时应用使用明确
 要求人工复核的 mock 建议。部署会创建 PVC 保存 inspection JSON 数据和上传照片。
+在当前单节点 kubeadm 环境中，PVC 会显式绑定到
+`/var/lib/product-crud/inspection-data` 的本地 hostPath，因此不需要默认
+StorageClass 或额外的 storage provisioner。这个方案适合 all-in-one 演示；
+多节点生产环境应使用云厂商 StorageClass 或具备副本能力的数据库。
 
 Inspection Web 地址：
 

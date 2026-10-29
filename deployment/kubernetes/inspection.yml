@@ -1,4 +1,19 @@
 apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: inspection-data-local
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /var/lib/product-crud/inspection-data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: inspection-data
@@ -6,6 +21,8 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: ""
+  volumeName: inspection-data-local
   resources:
     requests:
       storage: 1Gi

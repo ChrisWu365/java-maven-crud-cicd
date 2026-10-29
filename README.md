@@ -390,6 +390,11 @@ Configure these additional environment secrets:
 `INSPECTION_JWT_SECRET` is required. The three AI secrets may be empty; the
 application then uses its review-labelled mock suggestion. The deployment
 creates a persistent volume claim for inspection JSON data and uploaded photos.
+In the single-node kubeadm setup, the claim is explicitly bound to a local
+hostPath volume at `/var/lib/product-crud/inspection-data`, so no default
+StorageClass or extra storage provisioner is required. This is appropriate for
+the all-in-one demo; use a managed StorageClass or replicated database for a
+multi-node production cluster.
 
 The inspection Web is available at:
 
