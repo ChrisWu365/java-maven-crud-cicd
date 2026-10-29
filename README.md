@@ -13,6 +13,7 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 - [Screenshots](#screenshots)
 - [Run locally](#run-locally)
 - [API](#api)
+- [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [Deployment options](#deployment-options)
 - [Recommended hardware](#recommended-hardware)
 - [GitHub Actions CI/CD](#github-actions-cicd)
@@ -41,18 +42,30 @@ with Prometheus automatically, and Prometheus scrapes the application's
 
 ```mermaid
 flowchart LR
-    User[User / Browser] --> K8s[Kubernetes NodePort<br/>:30080]
-    K8s --> App[Spring Boot CRUD<br/>container :8080]
+    User[User / Browser] --> Web[React inspection web<br/>NodePort :5173]
+    Web --> API[Node.js inspection API<br/>internal :4000]
+    API --> Auth[JWT + RBAC]
+    API --> InspectionData[(Inspection JSON / photos)]
+    API --> AI[Optional vision AI<br/>backend-only]
+    User --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot product API<br/>container :8080]
     App --> H2[(H2 database)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    API -- /health and metrics path --> Prom
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
+    Registry --> Web
+    Registry --> API
 ```
 
 Kubernetes is optional for orchestration. On a single Docker host, the
 monitoring installer below is idempotent: it installs Docker only when needed,
 and reuses existing Prometheus/Grafana containers and persistent volumes.
+
+The original Spring Boot service continues to own the product API. The
+inspection demo is a separate React + Node.js vertical slice; the two services
+can be deployed independently and share the same CI/CD and monitoring platform.
 
 The application listens on container port `8080`. Kubernetes exposes it through
 NodePort `30080`; Prometheus uses NodePort `30090`, and Grafana uses NodePort
@@ -148,6 +161,67 @@ Example request body for create and update operations:
 
 Validation rules: `name` is required and limited to 100 characters, `price`
 must be greater than zero, and `description` is limited to 500 characters.
+
+## Passive fire inspection demo
+
+The repository also includes an interview-focused TypeScript/React vertical
+slice under `apps/inspection-api` and `apps/inspection-web`. The existing
+Spring Boot product API remains unchanged; the inspection demo is a separate
+Node.js service and React application.
+
+The demo supports:
+
+- JWT login with `ADMIN`, `INSPECTOR`, and `VIEWER` roles enforced by the API
+- Inspection records with building/location, notes, status, observations, and remedial actions
+- JPEG/PNG/WebP photo uploads with a 10 MB per-file and five-file limit
+- A printable inspection detail view
+- Configurable AI provider integration with a clearly labelled human-review requirement
+- A deterministic mock AI suggestion when no provider key is configured
+
+Run the API and web app locally in two terminals:
+
+```bash
+cd apps/inspection-api
+npm install
+copy .env.example .env
+npm run dev
+```
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. Development-only demo accounts are:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+| Admin | `admin@example.com` | `Admin123!` |
+
+These accounts are disabled when `NODE_ENV=production`; replace them with a
+real identity provider before production use. Set `JWT_SECRET` to a long random
+secret. AI integration is optional: configure `AI_PROVIDER_URL`, `AI_API_KEY`,
+and `AI_MODEL` only on the backend; never put the key in React or commit it.
+
+Run the focused checks:
+
+```bash
+cd apps/inspection-api && npm run build && npm test
+cd apps/inspection-web && npm run build
+```
+
+Run both services with Docker Compose:
+
+```bash
+set JWT_SECRET=<long-random-secret>
+docker compose -f deployment/inspection/docker-compose.yml up --build -d
+```
+
+Open http://localhost:5173. This Compose stack stores inspection data in a
+named volume and keeps the API private behind the web proxy.
 
 ## Deployment options
 
@@ -368,7 +442,9 @@ Prometheus storage from the actual samples-per-second and retention period.
 
 ## GitHub Actions CI/CD
 
-The workflow is `.github/workflows/cicd.yml`. The branch-to-environment mapping
+The workflow is `.github/workflows/cicd.yml`. Its CI gate validates both the
+original Maven application and the TypeScript inspection demo before an image
+can be published. The branch-to-environment mapping
 is:
 
 | Branch | GitHub Environment | Behavior |

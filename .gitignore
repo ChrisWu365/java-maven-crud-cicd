@@ -26,6 +26,12 @@ replay_pid*
 # Maven
 target/
 
+# Node.js
+node_modules/
+dist/
+apps/inspection-api/data/
+apps/inspection-api/uploads/
+
 # IDE
 .idea/
 *.iml

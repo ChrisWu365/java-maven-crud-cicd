@@ -12,6 +12,7 @@
 - [截图展示](#截图展示)
 - [本地运行](#本地运行)
 - [API](#api)
+- [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [部署方式](#部署方式)
 - [建议硬件配置](#建议硬件配置)
 - [GitHub Actions CI/CD](#github-actions-cicd)
@@ -39,18 +40,30 @@
 
 ```mermaid
 flowchart LR
-    User[用户 / 浏览器] --> K8s[Kubernetes NodePort<br/>:30080]
-    K8s --> App[Spring Boot CRUD<br/>容器 :8080]
+    User[用户 / 浏览器] --> Web[React 检查 Web<br/>NodePort :5173]
+    Web --> API[Node.js 检查 API<br/>内部 :4000]
+    API --> Auth[JWT + RBAC]
+    API --> InspectionData[(检查 JSON / 照片)]
+    API --> AI[可选视觉 AI<br/>仅后端调用]
+    User --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot Product API<br/>容器 :8080]
     App --> H2[(H2 数据库)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
+    API -- /health 和指标路径 --> Prom
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
+    Registry --> Web
+    Registry --> API
 ```
 
 Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
 安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
 Grafana 容器和持久化卷。
+
+原有 Spring Boot 服务继续负责 Product API。检查演示是独立的
+React + Node.js 垂直切片；两个服务可以独立部署，同时复用同一套 CI/CD
+和监控平台。
 
 应用容器监听 `8080` 端口。Kubernetes 通过 NodePort `30080` 暴露应用，
 Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
@@ -144,6 +157,66 @@ mvn clean verify
 
 校验规则：`name` 必填且最多 100 个字符，`price` 必须大于 0，
 `description` 最多 500 个字符。
+
+## Passive fire inspection demo
+
+仓库还新增了一个面向面试展示的 TypeScript/React 垂直切片，位于
+`apps/inspection-api` 和 `apps/inspection-web`。现有 Spring Boot product
+API 保持不变；检查业务使用独立的 Node.js 服务和 React 应用。
+
+演示功能包括：
+
+- JWT 登录，以及由 API 强制执行的 `ADMIN`、`INSPECTOR`、`VIEWER` 角色
+- 检查记录：建筑/位置、备注、状态、观察项和整改措施
+- JPEG/PNG/WebP 照片上传，单文件 10 MB、最多 5 个文件
+- 可打印的检查详情页面
+- 可配置的 AI provider，并明确标记必须人工复核
+- 未配置 AI key 时使用确定性的 mock 建议
+
+本地启动 API 和前端（两个终端）：
+
+```bash
+cd apps/inspection-api
+npm install
+copy .env.example .env
+npm run dev
+```
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+打开 http://localhost:5173。开发环境 demo 账号：
+
+| 角色 | Email | 密码 |
+| --- | --- | --- |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+| Admin | `admin@example.com` | `Admin123!` |
+
+这些账号在 `NODE_ENV=production` 时会禁用；生产环境应接入真实身份
+提供商。请将 `JWT_SECRET` 设置为足够长的随机值。AI 集成是可选的：
+只在后端配置 `AI_PROVIDER_URL`、`AI_API_KEY` 和 `AI_MODEL`，不要把 key
+放进 React 或提交到仓库。
+
+运行检查：
+
+```bash
+cd apps/inspection-api && npm run build && npm test
+cd apps/inspection-web && npm run build
+```
+
+使用 Docker Compose 同时启动：
+
+```bash
+set JWT_SECRET=<long-random-secret>
+docker compose -f deployment/inspection/docker-compose.yml up --build -d
+```
+
+打开 http://localhost:5173。该 Compose stack 使用命名卷保存检查数据，
+并通过 Web 代理隐藏 API 端口。
 
 ## 部署方式
 
@@ -338,7 +411,8 @@ Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
 
 ## GitHub Actions CI/CD
 
-工作流文件是 `.github/workflows/cicd.yml`，分支与环境的对应关系如下：
+工作流文件是 `.github/workflows/cicd.yml`。CI gate 会同时校验原有 Maven
+应用和 TypeScript 检查演示，校验通过后才允许发布镜像。分支与环境的对应关系如下：
 
 | 分支 | GitHub Environment | 行为 |
 | --- | --- | --- |

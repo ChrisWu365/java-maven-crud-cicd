@@ -39,10 +39,31 @@ jobs:
       - name: Run tests and static analysis
         run: mvn --batch-mode verify
 
+  inspection-ci:
+    name: Build inspection demo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            apps/inspection-api/package-lock.json
+            apps/inspection-web/package-lock.json
+      - name: Test and build inspection API
+        working-directory: apps/inspection-api
+        run: npm ci && npm run build && npm test
+      - name: Build inspection web
+        working-directory: apps/inspection-web
+        run: npm ci && npm run build
+
   publish:
     name: Publish Docker image
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    needs: ci
+    needs: [ci, inspection-ci]
     runs-on: ubuntu-latest
     permissions:
       contents: read
