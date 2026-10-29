@@ -100,7 +100,7 @@ export async function deleteInspection(id: string): Promise<boolean> {
 }
 
 export function findUser(email: string): User | undefined {
-  if (process.env.NODE_ENV === 'production') return undefined;
+  //if (process.env.NODE_ENV === 'production') return undefined;
   return demoUsers.find((user) => user.email === email.toLowerCase());
 }
 
