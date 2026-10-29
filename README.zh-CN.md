@@ -40,7 +40,7 @@
 
 ```mermaid
 flowchart LR
-    User[用户 / 浏览器] --> Web[React 检查 Web<br/>NodePort :5173]
+    User[用户 / 浏览器] --> Web[React 检查 Web<br/>NodePort :30173]
     Web --> API[Node.js 检查 API<br/>内部 :4000]
     API --> Auth[JWT + RBAC]
     API --> InspectionData[(检查 JSON / 照片)]
@@ -49,7 +49,6 @@ flowchart LR
     K8s --> App[Spring Boot Product API<br/>容器 :8080]
     App --> H2[(H2 数据库)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
-    API -- /health 和指标路径 --> Prom
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
@@ -65,10 +64,10 @@ Grafana 容器和持久化卷。
 React + Node.js 垂直切片；两个服务可以独立部署，同时复用同一套 CI/CD
 和监控平台。
 
-应用容器监听 `8080` 端口。Kubernetes 通过 NodePort `30080` 暴露应用，
-Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
-Prometheus 抓取应用的 `/actuator/prometheus` 指标，Grafana 从 Prometheus
-读取指标，并自动创建应用监控看板。
+Product API 容器监听 `8080`，通过 NodePort `30080` 暴露。检查 Web 使用
+NodePort `30173`，Node.js API 只作为 Kubernetes 内部 `4000` 端口 Service
+运行。Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
+Prometheus 抓取应用指标，Grafana 从 Prometheus 读取指标并自动创建看板。
 
 ## 截图展示
 
@@ -81,8 +80,8 @@ Prometheus 抓取应用的 `/actuator/prometheus` 指标，Grafana 从 Prometheu
 
 ### Azure VM 网络设置
 
-Azure Network Security Group 放行 SSH `22` 端口，以及应用和监控使用的
-NodePort：`30080`、`30030`、`30090`。
+Azure Network Security Group 放行 SSH `22` 端口、Product API NodePort
+`30080`、inspection Web NodePort `30173`，以及监控 NodePort `30030`、`30090`。
 
 ![Azure VM 网络设置](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
 
@@ -215,8 +214,8 @@ set JWT_SECRET=<long-random-secret>
 docker compose -f deployment/inspection/docker-compose.yml up --build -d
 ```
 
-打开 http://localhost:5173。该 Compose stack 使用命名卷保存检查数据，
-并通过 Web 代理隐藏 API 端口。
+Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部署路径。
+生产环境和面试演示统一使用现有 Kubernetes 部署和 containerd 运行时。
 
 ## 部署方式
 
@@ -224,7 +223,7 @@ docker compose -f deployment/inspection/docker-compose.yml up --build -d
 | --- | --- | --- | --- |
 | 手动 JAR | `scripts/manual/` | Java + systemd | 学习主机进程部署 |
 | Docker | `deployment/docker/`、`scripts/docker/` | Docker Compose | 单机容器部署 |
-| Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Deployment + NodePort | 滚动发布和容器编排 |
+| Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Product API + 检查 API/Web + 监控 | 统一容器编排和滚动发布 |
 | 监控 | `deployment/monitoring/`、`scripts/monitoring/` | Prometheus + Grafana | 单机监控和可视化 |
 
 Docker 镜像由 GitHub Actions 构建并推送到 GHCR。Docker 和 Kubernetes
@@ -267,10 +266,10 @@ sudo bash scripts/docker/install-docker-ubuntu.sh
 
 ### 3. Kubernetes 单机或多节点
 
-Kubernetes 节点使用 **containerd**，不需要 Docker。推荐只安装 Kubernetes
-脚本；如果同一台机器还需要 Docker Compose，才额外安装 Docker。两者都安装时，
-Docker 的 `containerd.io` 可能替换系统 containerd，安装后必须确认
-`systemctl status containerd kubelet` 均正常。
+Kubernetes 节点使用 **containerd**，不需要 Docker，也不建议在 Kubernetes
+服务器上安装 Docker。Docker 可能替换或重新配置 Kubernetes 使用的
+containerd。Docker Compose 只建议在独立的本地开发机器使用。验证 Kubernetes
+运行时：
 
 #### 单机 control-plane + worker（推荐学习环境）
 
@@ -306,7 +305,8 @@ sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh
   `POD_NETWORK_CIDR`。
 - 默认 Kubernetes 软件源为 `v1.30`，可通过 `K8S_MINOR_VERSION=v1.31` 修改。
 - 脚本会关闭 swap，并配置 bridge filtering、IPv4 forwarding 和 systemd cgroup。
-- 云安全组和 Ubuntu 防火墙至少需要允许 SSH；访问应用还需允许 TCP `30080`。
+- 云安全组和 Ubuntu 防火墙至少需要允许 SSH；访问应用还需允许 TCP
+  `30080`、`30173`。
 
 验证：
 
@@ -342,6 +342,35 @@ Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
 
 `GHCR_TOKEN` 至少需要 `read:packages`。不要把短生命周期的
 `GITHUB_TOKEN` 当作节点长期使用的 pull secret。
+
+#### 在同一个 Kubernetes 集群部署 inspection demo
+
+GitHub Actions 的 Kubernetes job 会构建并推送三个不可变 GHCR 镜像：
+原有 Spring Boot Product API、inspection API 和 inspection Web，然后在同一个
+`product-crud` namespace 应用 `deployment/kubernetes/inspection.yml`。
+inspection API 只作为内部 Service 运行；React/Nginx 会把 `/api`、`/health`
+和 `/uploads` 代理到它。
+
+请在 GitHub Environment 中增加以下 secrets：
+
+| Secret | 用途 |
+| --- | --- |
+| `INSPECTION_JWT_SECRET` | 足够长的 JWT 签名密钥 |
+| `INSPECTION_AI_API_KEY` | 可选的后端 AI provider key |
+| `INSPECTION_AI_PROVIDER_URL` | 可选的 AI provider endpoint |
+| `INSPECTION_AI_MODEL` | 可选的 AI model 名称 |
+
+`INSPECTION_JWT_SECRET` 必填；三个 AI secret 可以为空，此时应用使用明确
+要求人工复核的 mock 建议。部署会创建 PVC 保存 inspection JSON 数据和上传照片。
+
+Inspection Web 地址：
+
+```text
+http://<K8S_VM_IP>:30173
+```
+
+请在 Azure Network Security Group 和主机防火墙放行 TCP `30173`。
+Inspection API 不应暴露为公网 NodePort。
 
 #### 访问 Kubernetes 服务
 
@@ -435,6 +464,8 @@ Kubernetes 或 Docker。
 | `K8S_GHCR_USERNAME`、`K8S_GHCR_TOKEN` | Kubernetes 拉取 GHCR 镜像 |
 | `DOCKER_VM_IP`、`DOCKER_VM_USER`、`DOCKER_VM_KEY` | Docker Compose SSH |
 | `GRAFANA_ADMIN_PASSWORD` | 监控部署使用的 Grafana 管理员密码 |
+| `INSPECTION_JWT_SECRET` | Inspection API JWT 签名密钥 |
+| `INSPECTION_AI_API_KEY`、`INSPECTION_AI_PROVIDER_URL`、`INSPECTION_AI_MODEL` | 可选的后端 AI 配置 |
 
 `publish` job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像；
 Kubernetes 节点使用单独的 `K8S_GHCR_TOKEN` 拉取镜像。private GHCR package

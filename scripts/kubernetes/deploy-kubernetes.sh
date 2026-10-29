@@ -2,9 +2,11 @@
 
 set -eu
 
-APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
-IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <image-reference> [spring-profile]}"
+APP_DIR="${1:?Usage: deploy-kubernetes.sh <app-directory> <product-image> [spring-profile] [inspection-api-image] [inspection-web-image]}"
+IMAGE_REF="${2:?Usage: deploy-kubernetes.sh <app-directory> <product-image> [spring-profile] [inspection-api-image] [inspection-web-image]}"
 SPRING_PROFILE="${3:-prod}"
+INSPECTION_API_IMAGE="${4:-}"
+INSPECTION_WEB_IMAGE="${5:-}"
 MANIFEST_DIR="${APP_DIR}/deployment/kubernetes"
 MONITORING_DIR="${APP_DIR}/deployment/monitoring"
 NAMESPACE="${K8S_NAMESPACE:-product-crud}"
@@ -84,6 +86,27 @@ sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|nam
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
 
+if [ -z "${INSPECTION_API_IMAGE}" ] || [ -z "${INSPECTION_WEB_IMAGE}" ]; then
+  echo "Inspection API and web image references are required." >&2
+  exit 1
+fi
+if [ -z "${JWT_SECRET:-}" ]; then
+  echo "JWT_SECRET must be provided for the inspection API." >&2
+  exit 1
+fi
+if [ ! -f "${MANIFEST_DIR}/inspection.yml" ]; then
+  echo "Inspection Kubernetes manifest not found: ${MANIFEST_DIR}/inspection.yml" >&2
+  exit 1
+fi
+kubectl -n "${NAMESPACE}" create secret generic inspection-secrets \
+  --from-literal=jwt-secret="${JWT_SECRET}" \
+  --from-literal=ai-api-key="${AI_API_KEY:-}" \
+  --from-literal=ai-provider-url="${AI_PROVIDER_URL:-}" \
+  --from-literal=ai-model="${AI_MODEL:-}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+sed "s|INSPECTION_API_IMAGE|${INSPECTION_API_IMAGE}|g; s|INSPECTION_WEB_IMAGE|${INSPECTION_WEB_IMAGE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+  "${MANIFEST_DIR}/inspection.yml" | kubectl apply -n "${NAMESPACE}" -f -
+
 if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
   echo "GRAFANA_ADMIN_PASSWORD must be provided for Kubernetes monitoring." >&2
   exit 1
@@ -131,6 +154,16 @@ for monitoring_deployment in prometheus grafana; do
       echo "Logs for pod ${pod}:" >&2
       kubectl -n "${NAMESPACE}" logs "${pod}" --all-containers=true --tail=200 >&2 || true
     done
+    exit 1
+  fi
+done
+for inspection_deployment in inspection-api inspection-web; do
+  if ! kubectl -n "${NAMESPACE}" rollout status \
+    "deployment/${inspection_deployment}" --timeout=180s; then
+    echo "Inspection deployment rollout failed: ${inspection_deployment}" >&2
+    kubectl -n "${NAMESPACE}" get "deployment/${inspection_deployment}" -o wide >&2 || true
+    kubectl -n "${NAMESPACE}" describe pods -l "app=${inspection_deployment}" >&2 || true
+    kubectl -n "${NAMESPACE}" get events --sort-by=.lastTimestamp >&2 || true
     exit 1
   fi
 done

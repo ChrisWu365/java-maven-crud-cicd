@@ -42,7 +42,7 @@ with Prometheus automatically, and Prometheus scrapes the application's
 
 ```mermaid
 flowchart LR
-    User[User / Browser] --> Web[React inspection web<br/>NodePort :5173]
+    User[User / Browser] --> Web[React inspection web<br/>NodePort :30173]
     Web --> API[Node.js inspection API<br/>internal :4000]
     API --> Auth[JWT + RBAC]
     API --> InspectionData[(Inspection JSON / photos)]
@@ -51,7 +51,6 @@ flowchart LR
     K8s --> App[Spring Boot product API<br/>container :8080]
     App --> H2[(H2 database)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
-    API -- /health and metrics path --> Prom
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
@@ -67,10 +66,11 @@ The original Spring Boot service continues to own the product API. The
 inspection demo is a separate React + Node.js vertical slice; the two services
 can be deployed independently and share the same CI/CD and monitoring platform.
 
-The application listens on container port `8080`. Kubernetes exposes it through
-NodePort `30080`; Prometheus uses NodePort `30090`, and Grafana uses NodePort
-`30030`. Prometheus scrapes `/actuator/prometheus`, while Grafana reads the
-metrics from Prometheus and provisions the application dashboard automatically.
+The product API listens on container port `8080` and uses NodePort `30080`.
+The inspection web uses NodePort `30173`; its Node.js API remains an internal
+Kubernetes Service on port `4000`. Prometheus uses NodePort `30090`, and Grafana
+uses NodePort `30030`. Prometheus scrapes the application metrics while Grafana
+reads the metrics from Prometheus and provisions the dashboard automatically.
 
 ## Screenshots
 
@@ -84,8 +84,9 @@ interfaces.
 
 ### Azure VM network settings
 
-The Azure Network Security Group allows SSH on port `22` and the application
-and monitoring NodePorts `30080`, `30030`, and `30090`.
+The Azure Network Security Group allows SSH on port `22`, the product API
+NodePort `30080`, the inspection Web NodePort `30173`, and monitoring NodePorts
+`30030` and `30090`.
 
 ![Azure VM network settings](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
 
@@ -220,8 +221,9 @@ set JWT_SECRET=<long-random-secret>
 docker compose -f deployment/inspection/docker-compose.yml up --build -d
 ```
 
-Open http://localhost:5173. This Compose stack stores inspection data in a
-named volume and keeps the API private behind the web proxy.
+Docker Compose is provided only as an optional local development shortcut.
+It is not the server deployment path: production and interview demonstrations
+use the existing Kubernetes deployment and containerd runtime.
 
 ## Deployment options
 
@@ -229,7 +231,7 @@ named volume and keeps the API private behind the web proxy.
 | --- | --- | --- | --- |
 | Manual JAR | `scripts/manual/` | Java + systemd | Learning host-process deployment |
 | Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | Single-VM container deployment |
-| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Deployment + NodePort | Container orchestration and rolling updates |
+| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Product API + inspection API/Web + monitoring | Unified container orchestration and rolling updates |
 | Monitoring | `deployment/monitoring/`, `scripts/monitoring/` | Prometheus + Grafana | Single-host observability |
 
 GitHub Actions builds the Docker image and publishes it to GHCR. Docker and
@@ -283,9 +285,10 @@ and waits for `/actuator/health`.
 
 ### 3. Kubernetes deployment
 
-Kubernetes nodes use **containerd**; Docker is not required. Install Docker on
-the same host only when Docker Compose is also needed. If both are installed,
-verify that the container runtime remains healthy:
+Kubernetes nodes use **containerd**; Docker is not required and should not be
+installed on the Kubernetes server. Installing Docker can replace or reconfigure
+the containerd package used by Kubernetes. Use Docker Compose only on a separate
+local development machine. Verify the Kubernetes runtime:
 
 ```bash
 systemctl status containerd kubelet
@@ -327,7 +330,7 @@ Important prerequisites:
 - The default Pod CIDR is `10.244.0.0/16`; set `POD_NETWORK_CIDR` if it conflicts.
 - The default Kubernetes package stream is `v1.30`; set `K8S_MINOR_VERSION` to change it.
 - The script disables swap and configures bridge filtering, IPv4 forwarding, and systemd cgroups.
-- Allow SSH and TCP `30080` in the cloud security group and host firewall.
+- Allow SSH and TCP `30080`, `30173` in the cloud security group and host firewall.
 
 Verify the node:
 
@@ -366,6 +369,36 @@ The Kubernetes deployment passes the Spring profile selected from the branch:
 
 `GHCR_TOKEN` requires at least `read:packages`. Do not use the short-lived
 `GITHUB_TOKEN` as a long-lived Kubernetes image-pull secret.
+
+#### Deploy the inspection demo in the same Kubernetes cluster
+
+The GitHub Actions Kubernetes job builds and pushes three immutable GHCR images:
+the existing Spring Boot product API, the inspection API, and the inspection Web.
+It then applies `deployment/kubernetes/inspection.yml` in the same
+`product-crud` namespace. The inspection API is internal-only; the React/Nginx
+service proxies `/api`, `/health`, and `/uploads` to it.
+
+Configure these additional environment secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `INSPECTION_JWT_SECRET` | Long random JWT signing secret |
+| `INSPECTION_AI_API_KEY` | Optional backend-only AI provider key |
+| `INSPECTION_AI_PROVIDER_URL` | Optional AI provider endpoint |
+| `INSPECTION_AI_MODEL` | Optional AI model name |
+
+`INSPECTION_JWT_SECRET` is required. The three AI secrets may be empty; the
+application then uses its review-labelled mock suggestion. The deployment
+creates a persistent volume claim for inspection JSON data and uploaded photos.
+
+The inspection Web is available at:
+
+```text
+http://<K8S_VM_IP>:30173
+```
+
+Allow TCP `30173` in the Azure Network Security Group and host firewall. The
+inspection API must not be exposed as a public NodePort.
 
 #### Access the Kubernetes service
 
@@ -468,6 +501,8 @@ workflow can select the values for the target branch):
 | `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
+| `INSPECTION_JWT_SECRET` | Inspection API JWT signing secret |
+| `INSPECTION_AI_API_KEY`, `INSPECTION_AI_PROVIDER_URL`, `INSPECTION_AI_MODEL` | Optional backend-only AI configuration |
 
 The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
 image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
