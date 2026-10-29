@@ -47,7 +47,12 @@ app.get('/api/inspections', requireAuth, async (_request, response) => {
 });
 
 app.get('/api/inspections/:id', requireAuth, async (request, response) => {
-  const inspection = await getInspection(String(request.params.id));
+  const id = String(request.params.id);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  const inspection = await getInspection(id);
   if (!inspection) {
     response.status(404).json({ error: 'Inspection not found' });
     return;
@@ -65,7 +70,12 @@ app.post('/api/inspections', requireAuth, requireRole('ADMIN', 'INSPECTOR'), asy
 });
 
 app.put('/api/inspections/:id', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request: AuthenticatedRequest, response) => {
-  const existing = await getInspection(String(request.params.id));
+  const id = String(request.params.id);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  const existing = await getInspection(id);
   if (!existing) {
     response.status(404).json({ error: 'Inspection not found' });
     return;
@@ -79,7 +89,12 @@ app.put('/api/inspections/:id', requireAuth, requireRole('ADMIN', 'INSPECTOR'), 
 });
 
 app.delete('/api/inspections/:id', requireAuth, requireRole('ADMIN'), async (request, response) => {
-  if (!(await deleteInspection(String(request.params.id)))) {
+  const id = String(request.params.id);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  if (!(await deleteInspection(id))) {
     response.status(404).json({ error: 'Inspection not found' });
     return;
   }
@@ -87,7 +102,12 @@ app.delete('/api/inspections/:id', requireAuth, requireRole('ADMIN'), async (req
 });
 
 app.post('/api/inspections/:id/photos', requireAuth, requireRole('ADMIN', 'INSPECTOR'), upload.array('photos', 5), async (request, response) => {
-  const inspection = await getInspection(String(request.params.id));
+  const id = String(request.params.id);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  const inspection = await getInspection(id);
   if (!inspection) {
     response.status(404).json({ error: 'Inspection not found' });
     return;
@@ -98,7 +118,12 @@ app.post('/api/inspections/:id/photos', requireAuth, requireRole('ADMIN', 'INSPE
 });
 
 app.post('/api/inspections/:id/ai-summary', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request, response) => {
-  const inspection = await getInspection(String(request.params.id));
+  const id = String(request.params.id);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  const inspection = await getInspection(id);
   if (!inspection) {
     response.status(404).json({ error: 'Inspection not found' });
     return;
