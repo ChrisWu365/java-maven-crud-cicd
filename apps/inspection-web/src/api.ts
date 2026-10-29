@@ -61,7 +61,7 @@ export const api = {
     Array.from(files).forEach((file) => form.append('photos', file));
     return request<Inspection>(`/api/inspections/${id}/photos`, { method: 'POST', body: form });
   },
-  aiSummary: (id: string) => request<{ summary: string; source: string; requiresReview: true; inspection: Inspection }>(
-    `/api/inspections/${id}/ai-summary`, { method: 'POST', body: JSON.stringify({}) }
+  aiSummary: (id: string, instruction: string) => request<{ summary: string; source: string; requiresReview: true; inspection: Inspection }>(
+    `/api/inspections/${id}/ai-summary`, { method: 'POST', body: JSON.stringify({ instruction }) }
   )
 };

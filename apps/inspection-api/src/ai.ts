@@ -12,7 +12,8 @@ async function photoToBase64(photoPath: string): Promise<string> {
 
 export async function createObservationSuggestion(
   inspection: Inspection,
-  photoProvided: boolean
+  photoProvided: boolean,
+  instruction: string = 'Provide a concise, non-definitive passive fire inspection observation draft. Never decide compliance. State that a qualified human must verify the result.'
 ): Promise<{ summary: string; source: 'mock' | 'provider'; requiresReview: true }> {
   const apiKey = process.env.AI_API_KEY;
   const providerUrl = process.env.AI_PROVIDER_URL;
@@ -30,29 +31,21 @@ export async function createObservationSuggestion(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
-      'X-goog-api-key': apiKey
+      'x-goog-api-key': apiKey
     },
     body: JSON.stringify({
       model: process.env.AI_MODEL,
-      instruction: 'Provide a concise, non-definitive passive fire inspection observation draft. Never decide compliance. State that a qualified human must verify the result.',
-      inspection: {
-        building: inspection.building,
-        location: inspection.location,
-        notes: inspection.notes,
-        observations: inspection.observations,
-        photoProvided
-      },
-      contents: [{
-        parts: [{
-          text: 'Provide a concise, non-definitive passive fire inspection observation draft. Never decide compliance. State that a qualified human must verify the result.'
-        }, ...photoBase64List.map(base64 => ({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: base64
-          }
-        }))]
-      }]
+      input: [
+        {
+          type: 'text',
+          text: instruction
+        },
+        ...photoBase64List.map(base64 => ({
+          type: 'image',
+          data: base64,
+          mime_type: 'image/jpeg'
+        }))
+      ]
     })
   });
   if (!response.ok) {

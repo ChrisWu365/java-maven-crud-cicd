@@ -103,8 +103,9 @@ app.post('/api/inspections/:id/ai-summary', requireAuth, requireRole('ADMIN', 'I
     response.status(404).json({ error: 'Inspection not found' });
     return;
   }
+  const instruction = typeof request.body?.instruction === 'string' ? request.body.instruction : 'Provide a concise, non-definitive passive fire inspection observation draft. Never decide compliance. State that a qualified human must verify the result.';
   try {
-    const suggestion = await createObservationSuggestion(inspection, inspection.photos.length > 0);
+    const suggestion = await createObservationSuggestion(inspection, inspection.photos.length > 0, instruction);
     const updated = await saveInspection({ ...inspection, aiSummary: suggestion.summary });
     response.json({ ...suggestion, inspection: updated });
   } catch (error) {
