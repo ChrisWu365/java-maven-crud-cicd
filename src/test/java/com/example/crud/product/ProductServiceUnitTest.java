@@ -94,7 +94,7 @@ class ProductServiceUnitTest {
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class, () -> productService.findById(1L));
 
-        assertThat(exception.getStatus().value(), is(404));
+        assertThat(exception.getReason(), is("Product not found"));
         verify(productRepository, never()).save(any(Product.class));
         verify(productRepository, never()).delete(any(Product.class));
     }

@@ -2,8 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个用于练习 GitHub Actions CI/CD 的 Spring Boot CRUD 项目。应用提供
-`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL 等数据库。
+本项目通过两个应用演示 GitHub Actions CI/CD：
+
+1. **Spring Boot Product API**：使用 H2 内存数据库的 `Product` 增删改查应用
+2. **Passive Fire Inspection Demo**：用于消防安全检查的 Node.js/TypeScript/React 应用，通过 Google Gemini API 提供 AI 辅助
 
 ## 目录
 
@@ -12,6 +14,7 @@
 - [截图展示](#截图展示)
 - [本地运行](#本地运行)
 - [API](#api)
+- [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [部署方式](#部署方式)
 - [建议硬件配置](#建议硬件配置)
 - [GitHub Actions CI/CD](#github-actions-cicd)
@@ -20,11 +23,21 @@
 
 ## 技术栈
 
-- Java 8、Maven、Spring Boot 2.7
+**Spring Boot Product API：**
+- Java 21、Maven、Spring Boot 4.1
 - Spring Web、Spring Data JPA、Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator、Micrometer Prometheus
-- H2、JUnit 5、MockMvc
+- H2、JUnit 6、MockMvc
+
+**Passive Fire Inspection Demo：**
+- Node.js 24、TypeScript 5.9、Express 5.1
+- React 19 + Vite 6.1
+- JWT 认证（bcryptjs 3.0）
+- Multer 2.0 文件上传
+- Google Gemini API 用于 AI 辅助检查
+
+**基础设施与 DevOps：**
 - Docker、Docker Compose
 - 使用 containerd、kubeadm、kubelet、kubectl 和 Flannel 的 Kubernetes
 - 用于指标、看板和告警规则的 Prometheus、Grafana
@@ -39,23 +52,34 @@
 
 ```mermaid
 flowchart LR
-    User[用户 / 浏览器] --> K8s[Kubernetes NodePort<br/>:30080]
-    K8s --> App[Spring Boot CRUD<br/>容器 :8080]
+    User[用户 / 浏览器] --> Web[React 检查 Web<br/>NodePort :30173]
+    Web --> API[Node.js 检查 API<br/>内部 :4000]
+    API --> Auth[JWT + RBAC]
+    API --> InspectionData[(检查 JSON / 照片)]
+    API --> AI[可选 Google Gemini<br/>视觉 AI 仅后端调用]
+    User --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot Product API<br/>容器 :8080]
     App --> H2[(H2 数据库)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
+    Registry --> Web
+    Registry --> API
 ```
 
 Kubernetes 仍然是可选的容器编排方式。在单台 Docker 主机上，下面的监控
 安装脚本具备幂等性：只在需要时安装 Docker，并复用已有的 Prometheus、
 Grafana 容器和持久化卷。
 
-应用容器监听 `8080` 端口。Kubernetes 通过 NodePort `30080` 暴露应用，
-Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
-Prometheus 抓取应用的 `/actuator/prometheus` 指标，Grafana 从 Prometheus
-读取指标，并自动创建应用监控看板。
+原有 Spring Boot 服务继续负责 Product API。检查演示是独立的
+React + Node.js 垂直切片；两个服务可以独立部署，同时复用同一套 CI/CD
+和监控平台。
+
+Product API 容器监听 `8080`，通过 NodePort `30080` 暴露。检查 Web 使用
+NodePort `30173`，Node.js API 只作为 Kubernetes 内部 `4000` 端口 Service
+运行。Prometheus 使用 NodePort `30090`，Grafana 使用 NodePort `30030`。
+Prometheus 抓取应用指标，Grafana 从 Prometheus 读取指标并自动创建看板。
 
 ## 截图展示
 
@@ -68,8 +92,8 @@ Prometheus 抓取应用的 `/actuator/prometheus` 指标，Grafana 从 Prometheu
 
 ### Azure VM 网络设置
 
-Azure Network Security Group 放行 SSH `22` 端口，以及应用和监控使用的
-NodePort：`30080`、`30030`、`30090`。
+Azure Network Security Group 放行 SSH `22` 端口、Product API NodePort
+`30080`、inspection Web NodePort `30173`，以及监控 NodePort `30030`、`30090`。
 
 ![Azure VM 网络设置](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
 
@@ -145,13 +169,73 @@ mvn clean verify
 校验规则：`name` 必填且最多 100 个字符，`price` 必须大于 0，
 `description` 最多 500 个字符。
 
+## Passive fire inspection demo
+
+仓库还新增了一个面向面试展示的 TypeScript/React 垂直切片，位于
+`apps/inspection-api` 和 `apps/inspection-web`。现有 Spring Boot product
+API 保持不变；检查业务使用独立的 Node.js 服务和 React 应用。
+
+演示功能包括：
+
+- JWT 登录，以及由 API 强制执行的 `ADMIN`、`INSPECTOR`、`VIEWER` 角色
+- 检查记录：建筑/位置、备注、状态、观察项和整改措施
+- JPEG/PNG/WebP 照片上传，单文件 10 MB、最多 5 个文件
+- 可打印的检查详情页面
+- Google Gemini API 集成用于 AI 辅助检查草稿，并明确标记必须人工复核
+- 未配置 AI key 时使用确定性的 mock 建议
+
+本地启动 API 和前端（两个终端）：
+
+```bash
+cd apps/inspection-api
+npm install
+copy .env.example .env
+npm run dev
+```
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+打开 http://localhost:5173。开发环境 demo 账号：
+
+| 角色 | Email | 密码 |
+| --- | --- | --- |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+| Admin | `admin@example.com` | `Admin123!` |
+
+这些账号在 `NODE_ENV=production` 时会禁用；生产环境应接入真实身份
+提供商。请将 `JWT_SECRET` 设置为足够长的随机值。AI 集成是可选的，
+仅支持 Google Gemini API：只在后端配置 `AI_PROVIDER_URL`、`AI_API_KEY`
+和 `AI_MODEL`，不要把 key 放进 React 或提交到仓库。
+
+运行检查：
+
+```bash
+cd apps/inspection-api && npm run build && npm test
+cd apps/inspection-web && npm run build
+```
+
+使用 Docker Compose 同时启动：
+
+```bash
+set JWT_SECRET=<long-random-secret>
+docker compose -f deployment/inspection/docker-compose.yml up --build -d
+```
+
+Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部署路径。
+生产环境和面试演示统一使用现有 Kubernetes 部署和 containerd 运行时。
+
 ## 部署方式
 
 | 方式 | 入口文件 | 运行时 | 适用场景 |
 | --- | --- | --- | --- |
 | 手动 JAR | `scripts/manual/` | Java + systemd | 学习主机进程部署 |
 | Docker | `deployment/docker/`、`scripts/docker/` | Docker Compose | 单机容器部署 |
-| Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Deployment + NodePort | 滚动发布和容器编排 |
+| Kubernetes | `deployment/kubernetes/`、`scripts/kubernetes/` | Product API + 检查 API/Web + 监控 | 统一容器编排和滚动发布 |
 | 监控 | `deployment/monitoring/`、`scripts/monitoring/` | Prometheus + Grafana | 单机监控和可视化 |
 
 Docker 镜像由 GitHub Actions 构建并推送到 GHCR。Docker 和 Kubernetes
@@ -194,10 +278,10 @@ sudo bash scripts/docker/install-docker-ubuntu.sh
 
 ### 3. Kubernetes 单机或多节点
 
-Kubernetes 节点使用 **containerd**，不需要 Docker。推荐只安装 Kubernetes
-脚本；如果同一台机器还需要 Docker Compose，才额外安装 Docker。两者都安装时，
-Docker 的 `containerd.io` 可能替换系统 containerd，安装后必须确认
-`systemctl status containerd kubelet` 均正常。
+Kubernetes 节点使用 **containerd**，不需要 Docker，也不建议在 Kubernetes
+服务器上安装 Docker。Docker 可能替换或重新配置 Kubernetes 使用的
+containerd。Docker Compose 只建议在独立的本地开发机器使用。验证 Kubernetes
+运行时：
 
 #### 单机 control-plane + worker（推荐学习环境）
 
@@ -233,7 +317,8 @@ sudo bash scripts/kubernetes/install-kubernetes-ubuntu.sh
   `POD_NETWORK_CIDR`。
 - 默认 Kubernetes 软件源为 `v1.30`，可通过 `K8S_MINOR_VERSION=v1.31` 修改。
 - 脚本会关闭 swap，并配置 bridge filtering、IPv4 forwarding 和 systemd cgroup。
-- 云安全组和 Ubuntu 防火墙至少需要允许 SSH；访问应用还需允许 TCP `30080`。
+- 云安全组和 Ubuntu 防火墙至少需要允许 SSH；访问应用还需允许 TCP
+  `30080`、`30173`。
 
 验证：
 
@@ -269,6 +354,39 @@ Kubernetes 部署会根据分支传入 Spring profile：`dev` 使用 `dev`，
 
 `GHCR_TOKEN` 至少需要 `read:packages`。不要把短生命周期的
 `GITHUB_TOKEN` 当作节点长期使用的 pull secret。
+
+#### 在同一个 Kubernetes 集群部署 inspection demo
+
+GitHub Actions 的 Kubernetes job 会构建并推送三个不可变 GHCR 镜像：
+原有 Spring Boot Product API、inspection API 和 inspection Web，然后在同一个
+`product-crud` namespace 应用 `deployment/kubernetes/inspection.yml`。
+inspection API 只作为内部 Service 运行；React/Nginx 会把 `/api`、`/health`
+和 `/uploads` 代理到它。
+
+请在 GitHub Environment 中增加以下 secrets：
+
+| Secret | 用途 |
+| --- | --- |
+| `INSPECTION_JWT_SECRET` | 足够长的 JWT 签名密钥 |
+| `INSPECTION_AI_API_KEY` | 可选的后端 Google Gemini API key |
+| `INSPECTION_AI_PROVIDER_URL` | 可选的 Google Gemini API endpoint |
+| `INSPECTION_AI_MODEL` | 可选的 Google Gemini model 名称 |
+
+`INSPECTION_JWT_SECRET` 必填；三个 AI secret 可以为空，此时应用使用明确
+要求人工复核的 mock 建议。部署会创建 PVC 保存 inspection JSON 数据和上传照片。
+在当前单节点 kubeadm 环境中，PVC 会显式绑定到
+`/var/lib/product-crud/inspection-data` 的本地 hostPath，因此不需要默认
+StorageClass 或额外的 storage provisioner。这个方案适合 all-in-one 演示；
+多节点生产环境应使用云厂商 StorageClass 或具备副本能力的数据库。
+
+Inspection Web 地址：
+
+```text
+http://<K8S_VM_IP>:30173
+```
+
+请在 Azure Network Security Group 和主机防火墙放行 TCP `30173`。
+Inspection API 不应暴露为公网 NodePort。
 
 #### 访问 Kubernetes 服务
 
@@ -338,7 +456,8 @@ Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
 
 ## GitHub Actions CI/CD
 
-工作流文件是 `.github/workflows/cicd.yml`，分支与环境的对应关系如下：
+工作流文件是 `.github/workflows/cicd.yml`。CI gate 会同时校验原有 Maven
+应用和 TypeScript 检查演示，校验通过后才允许发布镜像。分支与环境的对应关系如下：
 
 | 分支 | GitHub Environment | 行为 |
 | --- | --- | --- |
@@ -361,6 +480,8 @@ Kubernetes 或 Docker。
 | `K8S_GHCR_USERNAME`、`K8S_GHCR_TOKEN` | Kubernetes 拉取 GHCR 镜像 |
 | `DOCKER_VM_IP`、`DOCKER_VM_USER`、`DOCKER_VM_KEY` | Docker Compose SSH |
 | `GRAFANA_ADMIN_PASSWORD` | 监控部署使用的 Grafana 管理员密码 |
+| `INSPECTION_JWT_SECRET` | Inspection API JWT 签名密钥 |
+| `INSPECTION_AI_API_KEY`、`INSPECTION_AI_PROVIDER_URL`、`INSPECTION_AI_MODEL` | 可选的后端 AI 配置 |
 
 `publish` job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像；
 Kubernetes 节点使用单独的 `K8S_GHCR_TOKEN` 拉取镜像。private GHCR package

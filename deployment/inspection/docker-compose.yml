@@ -1,0 +1,27 @@
+services:
+  inspection-api:
+    build:
+      context: ../../apps/inspection-api
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before starting the inspection demo}
+      AI_PROVIDER_URL: ${AI_PROVIDER_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+    volumes:
+      - inspection-data:/app/data
+    expose:
+      - "4000"
+    restart: unless-stopped
+
+  inspection-web:
+    build:
+      context: ../../apps/inspection-web
+    depends_on:
+      - inspection-api
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  inspection-data:

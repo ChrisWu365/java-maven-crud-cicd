@@ -34,15 +34,36 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '21'
           cache: maven
       - name: Run tests and static analysis
         run: mvn --batch-mode verify
 
+  inspection-ci:
+    name: Build inspection demo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            apps/inspection-api/package-lock.json
+            apps/inspection-web/package-lock.json
+      - name: Test and build inspection API
+        working-directory: apps/inspection-api
+        run: npm ci && npm run build && npm test
+      - name: Build inspection web
+        working-directory: apps/inspection-web
+        run: npm ci && npm run build
+
   publish:
     name: Publish Docker image
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    needs: ci
+    needs: [ci, inspection-ci]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,6 +71,8 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.image }}
       tag: ${{ steps.image.outputs.tag }}
+      inspection_api_image: ${{ steps.image.outputs.inspection_api_image }}
+      inspection_web_image: ${{ steps.image.outputs.inspection_web_image }}
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -68,6 +91,8 @@ jobs:
           IMAGE="${REGISTRY}/${IMAGE_NAME,,}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
           echo "tag=sha-${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "inspection_api_image=${IMAGE}-inspection-api" >> "${GITHUB_OUTPUT}"
+          echo "inspection_web_image=${IMAGE}-inspection-web" >> "${GITHUB_OUTPUT}"
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -78,6 +103,26 @@ jobs:
             ${{ steps.image.outputs.image }}:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push inspection API image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/inspection-api
+          push: true
+          tags: |
+            ${{ steps.image.outputs.inspection_api_image }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.inspection_api_image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push inspection web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/inspection-web
+          push: true
+          tags: |
+            ${{ steps.image.outputs.inspection_web_image }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.inspection_web_image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -159,15 +204,25 @@ jobs:
           APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
           IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
           SPRING_PROFILE: ${{ env.SPRING_PROFILE }}
+          INSPECTION_API_IMAGE: "${{ needs.publish.outputs.inspection_api_image }}:${{ needs.publish.outputs.tag }}"
+          INSPECTION_WEB_IMAGE: "${{ needs.publish.outputs.inspection_web_image }}:${{ needs.publish.outputs.tag }}"
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          JWT_SECRET: ${{ secrets.INSPECTION_JWT_SECRET }}
+          AI_API_KEY: ${{ secrets.INSPECTION_AI_API_KEY }}
+          AI_PROVIDER_URL: ${{ secrets.INSPECTION_AI_PROVIDER_URL }}
+          AI_MODEL: ${{ secrets.INSPECTION_AI_MODEL }}
         with:
           host: ${{ secrets.K8S_VM_IP }}
           username: ${{ secrets.K8S_VM_USER }}
           key: ${{ secrets.K8S_VM_KEY }}
           port: 22
-          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,INSPECTION_API_IMAGE,INSPECTION_WEB_IMAGE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,JWT_SECRET,AI_API_KEY,AI_PROVIDER_URL,AI_MODEL
           script: |
             GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
-              bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}"
+              JWT_SECRET="${JWT_SECRET}" \
+              AI_API_KEY="${AI_API_KEY}" \
+              AI_PROVIDER_URL="${AI_PROVIDER_URL}" \
+              AI_MODEL="${AI_MODEL}" \
+              bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}" "${INSPECTION_API_IMAGE}" "${INSPECTION_WEB_IMAGE}"

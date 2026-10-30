@@ -12,9 +12,9 @@ APP_USER="$(id -un)"
 mkdir -p "${APP_DIR}"
 
 if ! command -v java >/dev/null 2>&1; then
-  echo "Java is not installed. Installing Java 8 runtime..."
+  echo "Java is not installed. Installing Java 21 runtime..."
   sudo env DEBIAN_FRONTEND=noninteractive apt-get update
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-8-jre-headless
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-21-jre-headless
 else
   echo "Java is already installed:"
   java -version

@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: inspection-data-local
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /var/lib/product-crud/inspection-data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: inspection-data
+  namespace: product-crud
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: inspection-data-local
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inspection-api
+  namespace: product-crud
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: inspection-api
+  template:
+    metadata:
+      labels:
+        app: inspection-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr-credentials
+      containers:
+        - name: inspection-api
+          image: INSPECTION_API_IMAGE
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "4000"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: inspection-secrets
+                  key: jwt-secret
+            - name: AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: inspection-secrets
+                  key: ai-api-key
+            - name: AI_PROVIDER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: inspection-secrets
+                  key: ai-provider-url
+            - name: AI_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: inspection-secrets
+                  key: ai-model
+          ports:
+            - name: http
+              containerPort: 4000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: inspection-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inspection-api
+  namespace: product-crud
+spec:
+  selector:
+    app: inspection-api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inspection-web
+  namespace: product-crud
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: inspection-web
+  template:
+    metadata:
+      labels:
+        app: inspection-web
+    spec:
+      imagePullSecrets:
+        - name: ghcr-credentials
+      containers:
+        - name: inspection-web
+          image: INSPECTION_WEB_IMAGE
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inspection-web
+  namespace: product-crud
+spec:
+  type: NodePort
+  selector:
+    app: inspection-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30173

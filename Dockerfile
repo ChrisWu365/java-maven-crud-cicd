@@ -1,4 +1,4 @@
-FROM maven:3.9.9-eclipse-temurin-8 AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
 WORKDIR /workspace
 COPY pom.xml .
@@ -7,7 +7,7 @@ COPY src ./src
 
 RUN mvn --batch-mode clean package -DskipTests
 
-FROM eclipse-temurin:8-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 RUN apt-get update \

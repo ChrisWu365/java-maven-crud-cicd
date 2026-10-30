@@ -2,9 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
-It provides create, read, update, and delete operations for `Product` records and
-uses an H2 in-memory database, so databases like MySQL are not required.
+This project demonstrates GitHub Actions CI/CD with two applications:
+
+1. **Spring Boot Product API**: A CRUD application for `Product` records using H2 in-memory database
+2. **Passive Fire Inspection Demo**: A Node.js/TypeScript/React application for fire safety inspections with AI-powered assistance via Google Gemini API
 
 ## Contents
 
@@ -13,6 +14,7 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 - [Screenshots](#screenshots)
 - [Run locally](#run-locally)
 - [API](#api)
+- [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [Deployment options](#deployment-options)
 - [Recommended hardware](#recommended-hardware)
 - [GitHub Actions CI/CD](#github-actions-cicd)
@@ -21,11 +23,21 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 
 ## Technology stack
 
-- Java 8, Maven, and Spring Boot 2.7
+**Spring Boot Product API:**
+- Java 21, Maven, and Spring Boot 4.1
 - Spring Web, Spring Data JPA, and Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator and Micrometer Prometheus
-- H2, JUnit 5, and MockMvc
+- H2, JUnit 6, and MockMvc
+
+**Passive Fire Inspection Demo:**
+- Node.js 24, TypeScript 5.9, and Express 5.1
+- React 19 with Vite 6.1
+- JWT authentication with bcryptjs 3.0
+- Multer 2.0 for file uploads
+- Google Gemini API for AI-powered inspection assistance
+
+**Infrastructure & DevOps:**
 - Docker and Docker Compose
 - Kubernetes with containerd, kubeadm, kubelet, kubectl, and Flannel
 - Prometheus and Grafana for metrics, dashboards, and alert rules
@@ -41,23 +53,35 @@ with Prometheus automatically, and Prometheus scrapes the application's
 
 ```mermaid
 flowchart LR
-    User[User / Browser] --> K8s[Kubernetes NodePort<br/>:30080]
-    K8s --> App[Spring Boot CRUD<br/>container :8080]
+    User[User / Browser] --> Web[React inspection web<br/>NodePort :30173]
+    Web --> API[Node.js inspection API<br/>internal :4000]
+    API --> Auth[JWT + RBAC]
+    API --> InspectionData[(Inspection JSON / photos)]
+    API --> AI[Optional Google Gemini<br/>vision AI backend-only]
+    User --> K8s[Kubernetes NodePort<br/>:30080]
+    K8s --> App[Spring Boot product API<br/>container :8080]
     App --> H2[(H2 database)]
     App -- Service :8080 / metrics --> Prom[Prometheus<br/>NodePort :30090]
     Graf[Grafana<br/>NodePort :30030] --> Prom
     CI[GitHub Actions] --> Registry[GHCR]
     Registry --> App
+    Registry --> Web
+    Registry --> API
 ```
 
 Kubernetes is optional for orchestration. On a single Docker host, the
 monitoring installer below is idempotent: it installs Docker only when needed,
 and reuses existing Prometheus/Grafana containers and persistent volumes.
 
-The application listens on container port `8080`. Kubernetes exposes it through
-NodePort `30080`; Prometheus uses NodePort `30090`, and Grafana uses NodePort
-`30030`. Prometheus scrapes `/actuator/prometheus`, while Grafana reads the
-metrics from Prometheus and provisions the application dashboard automatically.
+The original Spring Boot service continues to own the product API. The
+inspection demo is a separate React + Node.js vertical slice; the two services
+can be deployed independently and share the same CI/CD and monitoring platform.
+
+The product API listens on container port `8080` and uses NodePort `30080`.
+The inspection web uses NodePort `30173`; its Node.js API remains an internal
+Kubernetes Service on port `4000`. Prometheus uses NodePort `30090`, and Grafana
+uses NodePort `30030`. Prometheus scrapes the application metrics while Grafana
+reads the metrics from Prometheus and provisions the dashboard automatically.
 
 ## Screenshots
 
@@ -71,8 +95,9 @@ interfaces.
 
 ### Azure VM network settings
 
-The Azure Network Security Group allows SSH on port `22` and the application
-and monitoring NodePorts `30080`, `30030`, and `30090`.
+The Azure Network Security Group allows SSH on port `22`, the product API
+NodePort `30080`, the inspection Web NodePort `30173`, and monitoring NodePorts
+`30030` and `30090`.
 
 ![Azure VM network settings](.github/assets/ScreenShot_Azure_VM_Network_Settings.png)
 
@@ -149,13 +174,76 @@ Example request body for create and update operations:
 Validation rules: `name` is required and limited to 100 characters, `price`
 must be greater than zero, and `description` is limited to 500 characters.
 
+## Passive fire inspection demo
+
+The repository also includes an interview-focused TypeScript/React vertical
+slice under `apps/inspection-api` and `apps/inspection-web`. The existing
+Spring Boot product API remains unchanged; the inspection demo is a separate
+Node.js service and React application.
+
+The demo supports:
+
+- JWT login with `ADMIN`, `INSPECTOR`, and `VIEWER` roles enforced by the API
+- Inspection records with building/location, notes, status, observations, and remedial actions
+- JPEG/PNG/WebP photo uploads with a 10 MB per-file and five-file limit
+- A printable inspection detail view
+- Google Gemini API integration for AI-assisted inspection drafts with a clearly labelled human-review requirement
+- A deterministic mock AI suggestion when no provider key is configured
+
+Run the API and web app locally in two terminals:
+
+```bash
+cd apps/inspection-api
+npm install
+copy .env.example .env
+npm run dev
+```
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. Development-only demo accounts are:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+| Admin | `admin@example.com` | `Admin123!` |
+
+These accounts are disabled when `NODE_ENV=production`; replace them with a
+real identity provider before production use. Set `JWT_SECRET` to a long random
+secret. AI integration is optional and uses Google Gemini API only: configure
+`AI_PROVIDER_URL`, `AI_API_KEY`, and `AI_MODEL` only on the backend; never put
+the key in React or commit it.
+
+Run the focused checks:
+
+```bash
+cd apps/inspection-api && npm run build && npm test
+cd apps/inspection-web && npm run build
+```
+
+Run both services with Docker Compose:
+
+```bash
+set JWT_SECRET=<long-random-secret>
+docker compose -f deployment/inspection/docker-compose.yml up --build -d
+```
+
+Docker Compose is provided only as an optional local development shortcut.
+It is not the server deployment path: production and interview demonstrations
+use the existing Kubernetes deployment and containerd runtime.
+
 ## Deployment options
 
 | Option | Entry point | Runtime | Best for |
 | --- | --- | --- | --- |
 | Manual JAR | `scripts/manual/` | Java + systemd | Learning host-process deployment |
 | Docker | `deployment/docker/`, `scripts/docker/` | Docker Compose | Single-VM container deployment |
-| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Deployment + NodePort | Container orchestration and rolling updates |
+| Kubernetes | `deployment/kubernetes/`, `scripts/kubernetes/` | Product API + inspection API/Web + monitoring | Unified container orchestration and rolling updates |
 | Monitoring | `deployment/monitoring/`, `scripts/monitoring/` | Prometheus + Grafana | Single-host observability |
 
 GitHub Actions builds the Docker image and publishes it to GHCR. Docker and
@@ -209,9 +297,10 @@ and waits for `/actuator/health`.
 
 ### 3. Kubernetes deployment
 
-Kubernetes nodes use **containerd**; Docker is not required. Install Docker on
-the same host only when Docker Compose is also needed. If both are installed,
-verify that the container runtime remains healthy:
+Kubernetes nodes use **containerd**; Docker is not required and should not be
+installed on the Kubernetes server. Installing Docker can replace or reconfigure
+the containerd package used by Kubernetes. Use Docker Compose only on a separate
+local development machine. Verify the Kubernetes runtime:
 
 ```bash
 systemctl status containerd kubelet
@@ -253,7 +342,7 @@ Important prerequisites:
 - The default Pod CIDR is `10.244.0.0/16`; set `POD_NETWORK_CIDR` if it conflicts.
 - The default Kubernetes package stream is `v1.30`; set `K8S_MINOR_VERSION` to change it.
 - The script disables swap and configures bridge filtering, IPv4 forwarding, and systemd cgroups.
-- Allow SSH and TCP `30080` in the cloud security group and host firewall.
+- Allow SSH and TCP `30080`, `30173` in the cloud security group and host firewall.
 
 Verify the node:
 
@@ -292,6 +381,41 @@ The Kubernetes deployment passes the Spring profile selected from the branch:
 
 `GHCR_TOKEN` requires at least `read:packages`. Do not use the short-lived
 `GITHUB_TOKEN` as a long-lived Kubernetes image-pull secret.
+
+#### Deploy the inspection demo in the same Kubernetes cluster
+
+The GitHub Actions Kubernetes job builds and pushes three immutable GHCR images:
+the existing Spring Boot product API, the inspection API, and the inspection Web.
+It then applies `deployment/kubernetes/inspection.yml` in the same
+`product-crud` namespace. The inspection API is internal-only; the React/Nginx
+service proxies `/api`, `/health`, and `/uploads` to it.
+
+Configure these additional environment secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `INSPECTION_JWT_SECRET` | Long random JWT signing secret |
+| `INSPECTION_AI_API_KEY` | Optional backend-only Google Gemini API key |
+| `INSPECTION_AI_PROVIDER_URL` | Optional Google Gemini API endpoint |
+| `INSPECTION_AI_MODEL` | Optional Google Gemini model name |
+
+`INSPECTION_JWT_SECRET` is required. The three AI secrets may be empty; the
+application then uses its review-labelled mock suggestion. The deployment
+creates a persistent volume claim for inspection JSON data and uploaded photos.
+In the single-node kubeadm setup, the claim is explicitly bound to a local
+hostPath volume at `/var/lib/product-crud/inspection-data`, so no default
+StorageClass or extra storage provisioner is required. This is appropriate for
+the all-in-one demo; use a managed StorageClass or replicated database for a
+multi-node production cluster.
+
+The inspection Web is available at:
+
+```text
+http://<K8S_VM_IP>:30173
+```
+
+Allow TCP `30173` in the Azure Network Security Group and host firewall. The
+inspection API must not be exposed as a public NodePort.
 
 #### Access the Kubernetes service
 
@@ -368,7 +492,9 @@ Prometheus storage from the actual samples-per-second and retention period.
 
 ## GitHub Actions CI/CD
 
-The workflow is `.github/workflows/cicd.yml`. The branch-to-environment mapping
+The workflow is `.github/workflows/cicd.yml`. Its CI gate validates both the
+original Maven application and the TypeScript inspection demo before an image
+can be published. The branch-to-environment mapping
 is:
 
 | Branch | GitHub Environment | Behavior |
@@ -392,6 +518,8 @@ workflow can select the values for the target branch):
 | `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
+| `INSPECTION_JWT_SECRET` | Inspection API JWT signing secret |
+| `INSPECTION_AI_API_KEY`, `INSPECTION_AI_PROVIDER_URL`, `INSPECTION_AI_MODEL` | Optional backend-only Google Gemini API configuration |
 
 The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
 image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
