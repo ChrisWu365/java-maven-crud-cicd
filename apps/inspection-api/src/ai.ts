@@ -27,6 +27,7 @@ export async function createObservationSuggestion(
 
   const photoBase64List = await Promise.all(inspection.photos.map(photoToBase64));
 
+  // Google Gemini API only, no other providers supported
   const response = await fetch(providerUrl, {
     method: 'POST',
     headers: {

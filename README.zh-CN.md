@@ -2,8 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个用于练习 GitHub Actions CI/CD 的 Spring Boot CRUD 项目。应用提供
-`Product` 的增删改查接口，使用 H2 内存数据库，因此不需要单独安装 MySQL 等数据库。
+本项目通过两个应用演示 GitHub Actions CI/CD：
+
+1. **Spring Boot Product API**：使用 H2 内存数据库的 `Product` 增删改查应用
+2. **Passive Fire Inspection Demo**：用于消防安全检查的 Node.js/TypeScript/React 应用，通过 Google Gemini API 提供 AI 辅助
 
 ## 目录
 
@@ -21,11 +23,21 @@
 
 ## 技术栈
 
+**Spring Boot Product API：**
 - Java 8、Maven、Spring Boot 2.7
 - Spring Web、Spring Data JPA、Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator、Micrometer Prometheus
 - H2、JUnit 5、MockMvc
+
+**Passive Fire Inspection Demo：**
+- Node.js 24、TypeScript 5.9、Express 5.1
+- React 19 + Vite 6.1
+- JWT 认证（bcryptjs 3.0）
+- Multer 2.0 文件上传
+- Google Gemini API 用于 AI 辅助检查
+
+**基础设施与 DevOps：**
 - Docker、Docker Compose
 - 使用 containerd、kubeadm、kubelet、kubectl 和 Flannel 的 Kubernetes
 - 用于指标、看板和告警规则的 Prometheus、Grafana
@@ -44,7 +56,7 @@ flowchart LR
     Web --> API[Node.js 检查 API<br/>内部 :4000]
     API --> Auth[JWT + RBAC]
     API --> InspectionData[(检查 JSON / 照片)]
-    API --> AI[可选视觉 AI<br/>仅后端调用]
+    API --> AI[可选 Google Gemini<br/>视觉 AI 仅后端调用]
     User --> K8s[Kubernetes NodePort<br/>:30080]
     K8s --> App[Spring Boot Product API<br/>容器 :8080]
     App --> H2[(H2 数据库)]
@@ -169,7 +181,7 @@ API 保持不变；检查业务使用独立的 Node.js 服务和 React 应用。
 - 检查记录：建筑/位置、备注、状态、观察项和整改措施
 - JPEG/PNG/WebP 照片上传，单文件 10 MB、最多 5 个文件
 - 可打印的检查详情页面
-- 可配置的 AI provider，并明确标记必须人工复核
+- Google Gemini API 集成用于 AI 辅助检查草稿，并明确标记必须人工复核
 - 未配置 AI key 时使用确定性的 mock 建议
 
 本地启动 API 和前端（两个终端）：
@@ -196,9 +208,9 @@ npm run dev
 | Admin | `admin@example.com` | `Admin123!` |
 
 这些账号在 `NODE_ENV=production` 时会禁用；生产环境应接入真实身份
-提供商。请将 `JWT_SECRET` 设置为足够长的随机值。AI 集成是可选的：
-只在后端配置 `AI_PROVIDER_URL`、`AI_API_KEY` 和 `AI_MODEL`，不要把 key
-放进 React 或提交到仓库。
+提供商。请将 `JWT_SECRET` 设置为足够长的随机值。AI 集成是可选的，
+仅支持 Google Gemini API：只在后端配置 `AI_PROVIDER_URL`、`AI_API_KEY`
+和 `AI_MODEL`，不要把 key 放进 React 或提交到仓库。
 
 运行检查：
 
@@ -356,9 +368,9 @@ inspection API 只作为内部 Service 运行；React/Nginx 会把 `/api`、`/he
 | Secret | 用途 |
 | --- | --- |
 | `INSPECTION_JWT_SECRET` | 足够长的 JWT 签名密钥 |
-| `INSPECTION_AI_API_KEY` | 可选的后端 AI provider key |
-| `INSPECTION_AI_PROVIDER_URL` | 可选的 AI provider endpoint |
-| `INSPECTION_AI_MODEL` | 可选的 AI model 名称 |
+| `INSPECTION_AI_API_KEY` | 可选的后端 Google Gemini API key |
+| `INSPECTION_AI_PROVIDER_URL` | 可选的 Google Gemini API endpoint |
+| `INSPECTION_AI_MODEL` | 可选的 Google Gemini model 名称 |
 
 `INSPECTION_JWT_SECRET` 必填；三个 AI secret 可以为空，此时应用使用明确
 要求人工复核的 mock 建议。部署会创建 PVC 保存 inspection JSON 数据和上传照片。

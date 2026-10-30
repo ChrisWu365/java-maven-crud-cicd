@@ -2,9 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-This project is a Spring Boot CRUD application for practising GitHub Actions CI/CD.
-It provides create, read, update, and delete operations for `Product` records and
-uses an H2 in-memory database, so databases like MySQL are not required.
+This project demonstrates GitHub Actions CI/CD with two applications:
+
+1. **Spring Boot Product API**: A CRUD application for `Product` records using H2 in-memory database
+2. **Passive Fire Inspection Demo**: A Node.js/TypeScript/React application for fire safety inspections with AI-powered assistance via Google Gemini API
 
 ## Contents
 
@@ -22,11 +23,21 @@ uses an H2 in-memory database, so databases like MySQL are not required.
 
 ## Technology stack
 
+**Spring Boot Product API:**
 - Java 8, Maven, and Spring Boot 2.7
 - Spring Web, Spring Data JPA, and Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator and Micrometer Prometheus
 - H2, JUnit 5, and MockMvc
+
+**Passive Fire Inspection Demo:**
+- Node.js 24, TypeScript 5.9, and Express 5.1
+- React 19 with Vite 6.1
+- JWT authentication with bcryptjs 3.0
+- Multer 2.0 for file uploads
+- Google Gemini API for AI-powered inspection assistance
+
+**Infrastructure & DevOps:**
 - Docker and Docker Compose
 - Kubernetes with containerd, kubeadm, kubelet, kubectl, and Flannel
 - Prometheus and Grafana for metrics, dashboards, and alert rules
@@ -46,7 +57,7 @@ flowchart LR
     Web --> API[Node.js inspection API<br/>internal :4000]
     API --> Auth[JWT + RBAC]
     API --> InspectionData[(Inspection JSON / photos)]
-    API --> AI[Optional vision AI<br/>backend-only]
+    API --> AI[Optional Google Gemini<br/>vision AI backend-only]
     User --> K8s[Kubernetes NodePort<br/>:30080]
     K8s --> App[Spring Boot product API<br/>container :8080]
     App --> H2[(H2 database)]
@@ -176,7 +187,7 @@ The demo supports:
 - Inspection records with building/location, notes, status, observations, and remedial actions
 - JPEG/PNG/WebP photo uploads with a 10 MB per-file and five-file limit
 - A printable inspection detail view
-- Configurable AI provider integration with a clearly labelled human-review requirement
+- Google Gemini API integration for AI-assisted inspection drafts with a clearly labelled human-review requirement
 - A deterministic mock AI suggestion when no provider key is configured
 
 Run the API and web app locally in two terminals:
@@ -204,8 +215,9 @@ Open http://localhost:5173. Development-only demo accounts are:
 
 These accounts are disabled when `NODE_ENV=production`; replace them with a
 real identity provider before production use. Set `JWT_SECRET` to a long random
-secret. AI integration is optional: configure `AI_PROVIDER_URL`, `AI_API_KEY`,
-and `AI_MODEL` only on the backend; never put the key in React or commit it.
+secret. AI integration is optional and uses Google Gemini API only: configure
+`AI_PROVIDER_URL`, `AI_API_KEY`, and `AI_MODEL` only on the backend; never put
+the key in React or commit it.
 
 Run the focused checks:
 
@@ -383,9 +395,9 @@ Configure these additional environment secrets:
 | Secret | Purpose |
 | --- | --- |
 | `INSPECTION_JWT_SECRET` | Long random JWT signing secret |
-| `INSPECTION_AI_API_KEY` | Optional backend-only AI provider key |
-| `INSPECTION_AI_PROVIDER_URL` | Optional AI provider endpoint |
-| `INSPECTION_AI_MODEL` | Optional AI model name |
+| `INSPECTION_AI_API_KEY` | Optional backend-only Google Gemini API key |
+| `INSPECTION_AI_PROVIDER_URL` | Optional Google Gemini API endpoint |
+| `INSPECTION_AI_MODEL` | Optional Google Gemini model name |
 
 `INSPECTION_JWT_SECRET` is required. The three AI secrets may be empty; the
 application then uses its review-labelled mock suggestion. The deployment
@@ -507,7 +519,7 @@ workflow can select the values for the target branch):
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
 | `INSPECTION_JWT_SECRET` | Inspection API JWT signing secret |
-| `INSPECTION_AI_API_KEY`, `INSPECTION_AI_PROVIDER_URL`, `INSPECTION_AI_MODEL` | Optional backend-only AI configuration |
+| `INSPECTION_AI_API_KEY`, `INSPECTION_AI_PROVIDER_URL`, `INSPECTION_AI_MODEL` | Optional backend-only Google Gemini API configuration |
 
 The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
 image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
