@@ -76,14 +76,14 @@ function InspectionModal({ initial, canEdit, onClose, onSaved }: { initial: Insp
   const update = (patch: Partial<Inspection>) => setForm((current) => ({ ...current, ...patch }));
   const save = async () => {
     setSaving(true); setError('');
-    try { onSaved(await api.save(form, isNew ? undefined : form.id)); setMessage('Saved'); }
+    try { const saved = await api.save(form, isNew ? undefined : form.id); onSaved(saved); setForm(saved); setMessage('Saved'); }
     catch (err) { setError(err instanceof Error ? err.message : 'Save failed'); }
     finally { setSaving(false); }
   };
   const addObservation = () => update({ observations: [...form.observations, { description: '', severity: 'MEDIUM', remedialAction: '' }] });
   const updateObservation = (index: number, patch: Partial<Observation>) => update({ observations: form.observations.map((item, current) => current === index ? { ...item, ...patch } : item) });
   const runAi = async () => {
-    if (isNew) { setError('Save the inspection before requesting an AI suggestion.'); return; }
+    if (!form.id) { setError('Save the inspection before requesting an AI suggestion.'); return; }
     try { const result = await api.aiSummary(form.id, aiInstruction); setForm(result.inspection); setMessage(`AI ${result.source} suggestion added — human review required.`); }
     catch (err) { setError(err instanceof Error ? err.message : 'AI suggestion failed'); }
   };
