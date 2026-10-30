@@ -117,6 +117,34 @@ app.post('/api/inspections/:id/photos', requireAuth, requireRole('ADMIN', 'INSPE
   response.json(await saveInspection({ ...inspection, photos: [...inspection.photos, ...photos] }));
 });
 
+app.delete('/api/inspections/:id/photos/:photoIndex', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request, response) => {
+  const id = String(request.params.id);
+  const photoIndex = Number(request.params.photoIndex);
+  if (!id) {
+    response.status(400).json({ error: 'Invalid inspection ID. Please sign in again!' });
+    return;
+  }
+  if (isNaN(photoIndex) || photoIndex < 0) {
+    response.status(400).json({ error: 'Invalid photo index' });
+    return;
+  }
+  const inspection = await getInspection(id);
+  if (!inspection) {
+    response.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (photoIndex >= inspection.photos.length) {
+    response.status(400).json({ error: 'Photo index out of range' });
+    return;
+  }
+  const photoToDelete = inspection.photos[photoIndex];
+  const updatedPhotos = inspection.photos.filter((_, index) => index !== photoIndex);
+  response.json(await saveInspection({ ...inspection, photos: updatedPhotos }));
+  // Optionally delete the file from disk
+  const filePath = path.join(uploadDirectory, path.basename(photoToDelete));
+  fs.unlink(filePath).catch(() => {}); // Ignore file deletion errors
+});
+
 app.post('/api/inspections/:id/ai-summary', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request, response) => {
   const id = String(request.params.id);
   if (!id) {
