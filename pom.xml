@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.18</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -18,7 +18,11 @@
     <description>Spring Boot CRUD example for GitHub Actions CI/CD practice</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <java.version>21</java.version>
+        <springdoc.version>3.1.1</springdoc.version>
+        <maven-checkstyle.version>3.6.0</maven-checkstyle.version>
+        <spotbugs.version>4.8.6.6</spotbugs.version>
+        <maven-pmd.version>3.26.0</maven-pmd.version>
     </properties>
 
     <dependencies>
@@ -44,8 +48,8 @@
         </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-ui</artifactId>
-            <version>1.7.0</version>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
@@ -55,6 +59,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -68,7 +77,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>3.3.1</version>
+                <version>${maven-checkstyle.version}</version>
                 <configuration>
                     <configLocation>checkstyle.xml</configLocation>
                     <includeTestSourceDirectory>true</includeTestSourceDirectory>
@@ -89,7 +98,7 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>4.5.3.0</version>
+                <version>${spotbugs.version}</version>
                 <configuration>
                     <effort>Max</effort>
                     <threshold>Low</threshold>
@@ -109,7 +118,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
-                <version>3.21.2</version>
+                <version>${maven-pmd.version}</version>
                 <configuration>
                     <rulesets>
                         <ruleset>/category/java/bestpractices.xml</ruleset>
