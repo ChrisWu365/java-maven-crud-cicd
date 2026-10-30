@@ -24,11 +24,11 @@
 ## 技术栈
 
 **Spring Boot Product API：**
-- Java 8、Maven、Spring Boot 2.7
+- Java 21、Maven、Spring Boot 4.1
 - Spring Web、Spring Data JPA、Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator、Micrometer Prometheus
-- H2、JUnit 5、MockMvc
+- H2、JUnit 6、MockMvc
 
 **Passive Fire Inspection Demo：**
 - Node.js 24、TypeScript 5.9、Express 5.1

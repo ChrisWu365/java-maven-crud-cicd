@@ -24,11 +24,11 @@ This project demonstrates GitHub Actions CI/CD with two applications:
 ## Technology stack
 
 **Spring Boot Product API:**
-- Java 8, Maven, and Spring Boot 2.7
+- Java 21, Maven, and Spring Boot 4.1
 - Spring Web, Spring Data JPA, and Bean Validation
 - Springdoc OpenAPI / Swagger UI
 - Spring Boot Actuator and Micrometer Prometheus
-- H2, JUnit 5, and MockMvc
+- H2, JUnit 6, and MockMvc
 
 **Passive Fire Inspection Demo:**
 - Node.js 24, TypeScript 5.9, and Express 5.1
