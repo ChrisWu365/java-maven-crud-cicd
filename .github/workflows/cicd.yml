@@ -1,4 +1,4 @@
-name: Java CI/CD with Docker
+name: CI/CD Pipeline
 
 on:
   push:
@@ -24,8 +24,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  ci:
-    name: Build, test, and analyze
+  spring-boot-ci:
+    name: Test Spring Boot API
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -40,30 +40,69 @@ jobs:
         run: mvn --batch-mode verify
 
   inspection-ci:
-    name: Build inspection demo
+    name: Test Inspection Demo
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
+            apps/e2e/package-lock.json
             apps/inspection-api/package-lock.json
             apps/inspection-web/package-lock.json
+
+      - name: Install Playwright dependencies
+        working-directory: apps/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: apps/e2e
+        run: npx playwright install --with-deps
+
       - name: Test and build inspection API
         working-directory: apps/inspection-api
         run: npm ci && npm run build && npm test
-      - name: Build inspection web
-        working-directory: apps/inspection-web
-        run: npm ci && npm run build
 
-  publish:
-    name: Publish Docker image
+      - name: Test and build inspection web
+        working-directory: apps/inspection-web
+        run: npm ci && npm run build && npm test
+
+      - name: Start API server
+        working-directory: apps/inspection-api
+        run: npm run dev &
+        env:
+          PORT: 4000
+
+      - name: Start web server
+        working-directory: apps/inspection-web
+        run: npm run dev &
+
+      - name: Wait for servers to be ready
+        run: |
+          npx wait-on http://localhost:4000/health --timeout 30000
+          npx wait-on http://localhost:5173 --timeout 30000
+
+      - name: Run E2E tests
+        working-directory: apps/e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/e2e/playwright-report/
+          retention-days: 30
+
+  publish-images:
+    name: Publish Docker Images
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
-    needs: [ci, inspection-ci]
+    needs: [spring-boot-ci, inspection-ci]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -129,7 +168,7 @@ jobs:
   deploy-docker:
     name: Deploy with Docker Compose
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'docker'
-    needs: publish
+    needs: publish-images
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
@@ -172,8 +211,8 @@ jobs:
 
   deploy-kubernetes:
     name: Deploy to Kubernetes
-    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'kubernetes' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'))
-    needs: publish
+    if: (github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')) || github.event_name == 'workflow_dispatch'
+    needs: publish-images
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
@@ -202,10 +241,10 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
-          IMAGE_REF: "${{ needs.publish.outputs.image }}:${{ needs.publish.outputs.tag }}"
+          IMAGE_REF: "${{ needs.publish-images.outputs.image }}:${{ needs.publish-images.outputs.tag }}"
           SPRING_PROFILE: ${{ env.SPRING_PROFILE }}
-          INSPECTION_API_IMAGE: "${{ needs.publish.outputs.inspection_api_image }}:${{ needs.publish.outputs.tag }}"
-          INSPECTION_WEB_IMAGE: "${{ needs.publish.outputs.inspection_web_image }}:${{ needs.publish.outputs.tag }}"
+          INSPECTION_API_IMAGE: "${{ needs.publish-images.outputs.inspection_api_image }}:${{ needs.publish-images.outputs.tag }}"
+          INSPECTION_WEB_IMAGE: "${{ needs.publish-images.outputs.inspection_web_image }}:${{ needs.publish-images.outputs.tag }}"
           GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
           GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}

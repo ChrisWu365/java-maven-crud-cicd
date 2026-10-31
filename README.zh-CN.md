@@ -35,6 +35,7 @@
 - React 19 + Vite 6.1
 - JWT 认证（bcryptjs 3.0）
 - Multer 2.0 文件上传
+- Swagger UI 和 swagger-jsdoc 用于 API 文档
 - Google Gemini API 用于 AI 辅助检查
 
 **基础设施与 DevOps：**
@@ -199,6 +200,11 @@ npm install
 npm run dev
 ```
 
+API 同时提供 Swagger UI 和 OpenAPI 文档：
+
+- http://localhost:4000/api-docs
+- http://localhost:4000/api-docs.json
+
 打开 http://localhost:5173。开发环境 demo 账号：
 
 | 角色 | Email | 密码 |
@@ -216,8 +222,10 @@ npm run dev
 
 ```bash
 cd apps/inspection-api && npm run build && npm test
-cd apps/inspection-web && npm run build
+cd apps/inspection-web && npm run build && npm test
 ```
+
+注意：如需使用 React 测试 UI 模式，请确保已安装 `@vitest/ui`（`npm install --save-dev @vitest/ui`）。
 
 使用 Docker Compose 同时启动：
 
@@ -228,6 +236,89 @@ docker compose -f deployment/inspection/docker-compose.yml up --build -d
 
 Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部署路径。
 开发联调、测试、预发布和生产环境统一使用现有 Kubernetes 部署和 containerd 运行时。
+
+## 测试
+
+本项目遵循测试金字塔原则：单元测试（70%）、集成测试（20%）和 E2E 测试（10%）。
+
+### API 测试（Node.js/Express）
+
+**单元测试和集成测试：**
+- 框架：Node.js 内置测试运行器 + Supertest
+- 位置：`apps/inspection-api/test/`
+- 运行测试：`cd apps/inspection-api && npm test`
+
+测试覆盖：
+- 身份认证和 JWT 令牌生成
+- 检查记录 CRUD 操作
+- 观察项管理
+- 基于角色的访问控制
+
+### 前端测试（React）
+
+**组件测试：**
+- 框架：Vitest + React Testing Library
+- 位置：`apps/inspection-web/src/test/`
+- 运行测试：`cd apps/inspection-web && npm test`
+- 运行 UI 模式：`npm run test:ui`
+- 运行覆盖率：`npm run test:coverage`
+
+测试覆盖：
+- 登录表单和身份认证流程
+- 基于角色的 UI 渲染
+- 组件交互
+- 用户操作和状态变化
+
+### E2E 测试
+
+**端到端测试：**
+- 框架：Playwright
+- 位置：`apps/e2e/tests/`
+- 切换到 apps/e2e 目录：`cd apps/e2e`
+- 安装项目依赖（Playwright）： `npm install`
+- 安装 Playwright 所需的浏览器内核及系统依赖： `npx playwright install --with-deps`
+- 运行测试：`npx playwright test`
+- 运行 UI 模式：`npx playwright test --ui`
+
+**E2E 测试手动设置：**
+在本地运行 E2E 测试前，必须先启动两个服务器：
+
+1. 终端 1 - 启动 API 服务器：
+```bash
+cd apps/inspection-api
+npm run dev
+```
+
+2. 终端 2 - 启动 Web 服务器：
+```bash
+cd apps/inspection-web
+npm run dev
+```
+
+3. 终端 3 - 运行 E2E 测试：
+```bash
+npx playwright test
+```
+
+测试覆盖：
+- 完整登录流程
+- 仪表板导航
+- 基于角色的权限
+- 检查记录创建和管理
+- 跨浏览器兼容性（Chromium、Firefox、WebKit）
+
+### CI/CD 集成
+
+GitHub Actions 工作流自动运行：
+- 每次提交运行单元和集成测试
+- Pull request 运行组件测试
+- 部署前运行 E2E 测试
+- 上传 Playwright 报告为构建产物
+
+测试覆盖率目标：
+- 单元测试：80%+
+- 关键业务逻辑：100%
+- E2E：正常流程和关键错误场景
 
 ## 部署方式
 

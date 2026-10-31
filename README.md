@@ -35,6 +35,7 @@ This project demonstrates GitHub Actions CI/CD with two applications:
 - React 19 with Vite 6.1
 - JWT authentication with bcryptjs 3.0
 - Multer 2.0 for file uploads
+- Swagger UI and swagger-jsdoc for API documentation
 - Google Gemini API for AI-powered inspection assistance
 
 **Infrastructure & DevOps:**
@@ -205,6 +206,11 @@ npm install
 npm run dev
 ```
 
+The API also provides Swagger UI and OpenAPI documentation at:
+
+- http://localhost:4000/api-docs
+- http://localhost:4000/api-docs.json
+
 Open http://localhost:5173. Development-only demo accounts are:
 
 | Role | Email | Password |
@@ -223,8 +229,10 @@ Run the focused checks:
 
 ```bash
 cd apps/inspection-api && npm run build && npm test
-cd apps/inspection-web && npm run build
+cd apps/inspection-web && npm run build && npm test
 ```
+
+Note: For React testing UI mode, ensure `@vitest/ui` is installed (`npm install --save-dev @vitest/ui`).
 
 Run both services with Docker Compose:
 
@@ -236,6 +244,89 @@ docker compose -f deployment/inspection/docker-compose.yml up --build -d
 Docker Compose is provided only as an optional local development shortcut.
 It is not the server deployment path: dev, test, staging and production
 use the existing Kubernetes deployment and containerd runtime.
+
+## Testing
+
+The project follows a testing pyramid with unit tests (70%), integration tests (20%), and E2E tests (10%).
+
+### API Testing (Node.js/Express)
+
+**Unit & Integration Tests:**
+- Framework: Node.js built-in test runner + Supertest
+- Location: `apps/inspection-api/test/`
+- Run tests: `cd apps/inspection-api && npm test`
+
+Tests cover:
+- Authentication and JWT token generation
+- Inspection CRUD operations
+- Observation management
+- Role-based access control
+
+### Frontend Testing (React)
+
+**Component Tests:**
+- Framework: Vitest + React Testing Library
+- Location: `apps/inspection-web/src/test/`
+- Run tests: `cd apps/inspection-web && npm test`
+- Run with UI: `npm run test:ui`
+- Run with coverage: `npm run test:coverage`
+
+Tests cover:
+- Login form and authentication flow
+- Role-based UI rendering
+- Component interactions
+- User actions and state changes
+
+### E2E Testing
+
+**End-to-End Tests:**
+- Framework: Playwright
+- Location: `apps/e2e/tests/`
+- Switch to apps/e2e directory: `cd apps/e2e`
+- Install Playwright dependencies: `npm install`
+- Install browsers: `npx playwright install --with-deps`
+- Run tests: `npx playwright test`
+- Run with UI: `npx playwright test --ui`
+
+**Manual Setup for E2E Tests:**
+Before running E2E tests locally, you must start both servers:
+
+1. Terminal 1 - Start API server:
+```bash
+cd apps/inspection-api
+npm run dev
+```
+
+2. Terminal 2 - Start web server:
+```bash
+cd apps/inspection-web
+npm run dev
+```
+
+3. Terminal 3 - Run E2E tests:
+```bash
+npx playwright test
+```
+
+Tests cover:
+- Complete login flow
+- Dashboard navigation
+- Role-based permissions
+- Inspection creation and management
+- Cross-browser compatibility (Chromium, Firefox, WebKit)
+
+### CI/CD Integration
+
+The GitHub Actions workflow automatically runs:
+- Unit and integration tests on every commit
+- Component tests on pull requests
+- E2E tests before deployment
+- Uploads Playwright reports as artifacts
+
+Test coverage targets:
+- Unit tests: 80%+
+- Critical business logic: 100%
+- E2E: Happy path and key error scenarios
 
 ## Deployment options
 
