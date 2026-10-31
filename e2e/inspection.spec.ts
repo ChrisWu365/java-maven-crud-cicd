@@ -52,7 +52,7 @@ test.describe('Inspection Application E2E Tests', () => {
     await page.getByRole('button', { name: 'Sign in' }).click();
 
     await expect(page.getByText('Total inspections')).toBeVisible();
-    await expect(page.getByText('Action required')).toBeVisible();
+    await expect(page.getByText('Action required').first()).toBeVisible();
     await expect(page.getByText('Completed')).toBeVisible();
   });
 
@@ -64,6 +64,6 @@ test.describe('Inspection Application E2E Tests', () => {
     await expect(page.getByText('Recent inspections')).toBeVisible();
     await expect(page.getByText('Building / location')).toBeVisible();
     await expect(page.getByText('Status')).toBeVisible();
-    await expect(page.getByText('Inspector')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Inspector' })).toBeVisible();
   });
 });
