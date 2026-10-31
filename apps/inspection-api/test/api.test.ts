@@ -14,22 +14,15 @@ test('Health Check - can list inspections', async () => {
 });
 
 test('Inspection CRUD - create a new inspection', async () => {
-  const newInspection = {
+  const inspection = await saveInspection({
     building: 'Test Building',
     location: 'Room 101',
     notes: 'Test inspection notes',
     status: 'DRAFT' as const,
-    observations: [],
-    photos: []
-  };
-
-  const inspection = await saveInspection({
-    ...newInspection,
-    id: undefined,
     inspectorId: 'inspector-1',
     inspectorName: 'Inspector User',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    observations: [],
+    photos: []
   });
 
   assert.equal(typeof inspection.id, 'string');
@@ -44,7 +37,6 @@ test('Inspection CRUD - list all inspections', async () => {
 
 test('Inspection CRUD - get inspection by ID', async () => {
   const inspection = await saveInspection({
-    id: undefined,
     building: 'Test Building',
     location: 'Room 102',
     notes: 'Test get',
@@ -52,9 +44,7 @@ test('Inspection CRUD - get inspection by ID', async () => {
     inspectorId: 'inspector-1',
     inspectorName: 'Inspector User',
     observations: [],
-    photos: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    photos: []
   });
 
   const retrieved = await getInspection(inspection.id);
@@ -65,7 +55,6 @@ test('Inspection CRUD - get inspection by ID', async () => {
 
 test('Inspection CRUD - update inspection', async () => {
   const inspection = await saveInspection({
-    id: undefined,
     building: 'Test Building',
     location: 'Room 103',
     notes: 'Test update',
@@ -73,9 +62,7 @@ test('Inspection CRUD - update inspection', async () => {
     inspectorId: 'inspector-1',
     inspectorName: 'Inspector User',
     observations: [],
-    photos: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    photos: []
   });
 
   const updated = await saveInspection({
@@ -91,7 +78,6 @@ test('Inspection CRUD - update inspection', async () => {
 
 test('Inspection CRUD - delete inspection', async () => {
   const inspection = await saveInspection({
-    id: undefined,
     building: 'Test Building',
     location: 'Room 104',
     notes: 'Test delete',
@@ -99,9 +85,7 @@ test('Inspection CRUD - delete inspection', async () => {
     inspectorId: 'inspector-1',
     inspectorName: 'Inspector User',
     observations: [],
-    photos: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    photos: []
   });
 
   const deleted = await deleteInspection(inspection.id);
@@ -113,7 +97,6 @@ test('Inspection CRUD - delete inspection', async () => {
 
 test('Observation Management - add observations to inspection', async () => {
   const inspection = await saveInspection({
-    id: undefined,
     building: 'Test Building',
     location: 'Room 105',
     notes: 'Test with observations',
@@ -128,9 +111,7 @@ test('Observation Management - add observations to inspection', async () => {
         remedialAction: 'Replace door'
       }
     ],
-    photos: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    photos: []
   });
 
   assert.equal(inspection.observations.length, 1);
