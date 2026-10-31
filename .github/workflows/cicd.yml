@@ -45,36 +45,49 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
+            package-lock.json
             apps/inspection-api/package-lock.json
             apps/inspection-web/package-lock.json
+
+      - name: Install root dependencies (Playwright)
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
       - name: Test and build inspection API
         working-directory: apps/inspection-api
         run: npm ci && npm run build && npm test
+
       - name: Test and build inspection web
         working-directory: apps/inspection-web
         run: npm ci && npm run build && npm test
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+
       - name: Start API server
         working-directory: apps/inspection-api
         run: npm run dev &
         env:
           PORT: 4000
+
       - name: Start web server
         working-directory: apps/inspection-web
         run: npm run dev &
+
       - name: Wait for servers to be ready
         run: |
           npx wait-on http://localhost:4000/health --timeout 30000
           npx wait-on http://localhost:5173 --timeout 30000
+
       - name: Run E2E tests
         run: npx playwright test
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
