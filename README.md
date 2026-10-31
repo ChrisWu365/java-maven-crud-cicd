@@ -176,8 +176,8 @@ must be greater than zero, and `description` is limited to 500 characters.
 
 ## Passive fire inspection demo
 
-The repository also includes an interview-focused TypeScript/React vertical
-slice under `apps/inspection-api` and `apps/inspection-web`. The existing
+The repository also includes a TypeScript/React vertical
+slice designed for AI practices under `apps/inspection-api` and `apps/inspection-web`. The existing
 Spring Boot product API remains unchanged; the inspection demo is a separate
 Node.js service and React application.
 
@@ -234,7 +234,7 @@ docker compose -f deployment/inspection/docker-compose.yml up --build -d
 ```
 
 Docker Compose is provided only as an optional local development shortcut.
-It is not the server deployment path: production and interview demonstrations
+It is not the server deployment path: dev, test, staging and production
 use the existing Kubernetes deployment and containerd runtime.
 
 ## Deployment options

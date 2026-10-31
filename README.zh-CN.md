@@ -171,7 +171,7 @@ mvn clean verify
 
 ## Passive fire inspection demo
 
-仓库还新增了一个面向面试展示的 TypeScript/React 垂直切片，位于
+仓库还新增了一个面向AI实践的 TypeScript/React 垂直切片，位于
 `apps/inspection-api` 和 `apps/inspection-web`。现有 Spring Boot product
 API 保持不变；检查业务使用独立的 Node.js 服务和 React 应用。
 
@@ -227,7 +227,7 @@ docker compose -f deployment/inspection/docker-compose.yml up --build -d
 ```
 
 Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部署路径。
-生产环境和面试演示统一使用现有 Kubernetes 部署和 containerd 运行时。
+开发联调、测试、预发布和生产环境统一使用现有 Kubernetes 部署和 containerd 运行时。
 
 ## 部署方式
 
