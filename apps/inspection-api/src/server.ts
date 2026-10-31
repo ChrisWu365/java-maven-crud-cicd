@@ -4,6 +4,8 @@ import { promises as fs } from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './swagger.js';
 import { createObservationSuggestion } from './ai.js';
 import { issueToken, requireAuth, requireRole, type AuthenticatedRequest } from './auth.js';
 import { deleteInspection, findUser, getInspection, initialiseStore, listInspections, saveInspection, verifyPassword } from './store.js';
@@ -24,8 +26,56 @@ app.use(cors({ origin: process.env.WEB_ORIGIN?.split(',') ?? true }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(uploadDirectory));
 
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api-docs.json', (_request, response) => response.json(swaggerSpec));
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: UP
+ */
 app.get('/health', (_request, response) => response.json({ status: 'UP' }));
 
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: User login
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *       401:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/api/auth/login', async (request, response) => {
   const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
   const password = typeof request.body?.password === 'string' ? request.body.password : '';
@@ -40,12 +90,93 @@ app.post('/api/auth/login', async (request, response) => {
   });
 });
 
+/**
+ * @swagger
+ * /api/me:
+ *   get:
+ *     summary: Get current user info
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User info retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/api/me', requireAuth, (request: AuthenticatedRequest, response) => response.json(request.user));
 
+/**
+ * @swagger
+ * /api/inspections:
+ *   get:
+ *     summary: List all inspections
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of inspections
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Inspection'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/api/inspections', requireAuth, async (_request, response) => {
   response.json(await listInspections());
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}:
+ *   get:
+ *     summary: Get inspection by ID
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *     responses:
+ *       200:
+ *         description: Inspection retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Inspection'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.get('/api/inspections/:id', requireAuth, async (request, response) => {
   const id = String(request.params.id);
   if (!id) {
@@ -60,6 +191,46 @@ app.get('/api/inspections/:id', requireAuth, async (request, response) => {
   response.json(inspection);
 });
 
+/**
+ * @swagger
+ * /api/inspections:
+ *   post:
+ *     summary: Create new inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Inspection'
+ *     responses:
+ *       201:
+ *         description: Inspection created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Inspection'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/api/inspections', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request: AuthenticatedRequest, response) => {
   const input = validateInspection(request.body, request.user!);
   if ('error' in input) {
@@ -69,6 +240,59 @@ app.post('/api/inspections', requireAuth, requireRole('ADMIN', 'INSPECTOR'), asy
   response.status(201).json(await saveInspection(input.value));
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}:
+ *   put:
+ *     summary: Update inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Inspection'
+ *     responses:
+ *       200:
+ *         description: Inspection updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Inspection'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.put('/api/inspections/:id', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request: AuthenticatedRequest, response) => {
   const id = String(request.params.id);
   if (!id) {
@@ -88,6 +312,43 @@ app.put('/api/inspections/:id', requireAuth, requireRole('ADMIN', 'INSPECTOR'), 
   response.json(await saveInspection(input.value));
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}:
+ *   delete:
+ *     summary: Delete inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *     responses:
+ *       204:
+ *         description: Inspection deleted
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.delete('/api/inspections/:id', requireAuth, requireRole('ADMIN'), async (request, response) => {
   const id = String(request.params.id);
   if (!id) {
@@ -101,6 +362,65 @@ app.delete('/api/inspections/:id', requireAuth, requireRole('ADMIN'), async (req
   response.status(204).send();
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}/photos:
+ *   post:
+ *     summary: Upload photos to inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               photos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *     responses:
+ *       200:
+ *         description: Photos uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Inspection'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/api/inspections/:id/photos', requireAuth, requireRole('ADMIN', 'INSPECTOR'), upload.array('photos', 5), async (request, response) => {
   const id = String(request.params.id);
   if (!id) {
@@ -117,6 +437,59 @@ app.post('/api/inspections/:id/photos', requireAuth, requireRole('ADMIN', 'INSPE
   response.json(await saveInspection({ ...inspection, photos: [...inspection.photos, ...photos] }));
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}/photos/{photoIndex}:
+ *   delete:
+ *     summary: Delete photo from inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *       - in: path
+ *         name: photoIndex
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Photo index
+ *     responses:
+ *       200:
+ *         description: Photo deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Inspection'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.delete('/api/inspections/:id/photos/:photoIndex', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request, response) => {
   const id = String(request.params.id);
   const photoIndex = Number(request.params.photoIndex);
@@ -145,6 +518,75 @@ app.delete('/api/inspections/:id/photos/:photoIndex', requireAuth, requireRole('
   fs.unlink(filePath).catch(() => {}); // Ignore file deletion errors
 });
 
+/**
+ * @swagger
+ * /api/inspections/{id}/ai-summary:
+ *   post:
+ *     summary: Generate AI summary for inspection
+ *     tags: [Inspections]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Inspection ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               instruction:
+ *                 type: string
+ *                 description: Custom instruction for AI
+ *                 default: 'Provide a concise, non-definitive passive fire inspection observation draft. Never decide compliance. State that a qualified human must verify the result.'
+ *     responses:
+ *       200:
+ *         description: AI summary generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   type: string
+ *                 inspection:
+ *                   $ref: '#/components/schemas/Inspection'
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - insufficient role
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Inspection not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       502:
+ *         description: AI provider failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/api/inspections/:id/ai-summary', requireAuth, requireRole('ADMIN', 'INSPECTOR'), async (request, response) => {
   const id = String(request.params.id);
   if (!id) {

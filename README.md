@@ -35,6 +35,7 @@ This project demonstrates GitHub Actions CI/CD with two applications:
 - React 19 with Vite 6.1
 - JWT authentication with bcryptjs 3.0
 - Multer 2.0 for file uploads
+- Swagger UI and swagger-jsdoc for API documentation
 - Google Gemini API for AI-powered inspection assistance
 
 **Infrastructure & DevOps:**
@@ -204,6 +205,11 @@ cd apps/inspection-web
 npm install
 npm run dev
 ```
+
+The API also provides Swagger UI and OpenAPI documentation at:
+
+- http://localhost:4000/api-docs
+- http://localhost:4000/api-docs.json
 
 Open http://localhost:5173. Development-only demo accounts are:
 

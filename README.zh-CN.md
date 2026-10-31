@@ -35,6 +35,7 @@
 - React 19 + Vite 6.1
 - JWT 认证（bcryptjs 3.0）
 - Multer 2.0 文件上传
+- Swagger UI 和 swagger-jsdoc 用于 API 文档
 - Google Gemini API 用于 AI 辅助检查
 
 **基础设施与 DevOps：**
@@ -198,6 +199,11 @@ cd apps/inspection-web
 npm install
 npm run dev
 ```
+
+API 同时提供 Swagger UI 和 OpenAPI 文档：
+
+- http://localhost:4000/api-docs
+- http://localhost:4000/api-docs.json
 
 打开 http://localhost:5173。开发环境 demo 账号：
 
