@@ -32,6 +32,11 @@ dist/
 apps/inspection-api/data/
 apps/inspection-api/uploads/
 
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
 # IDE
 .idea/
 *.iml
