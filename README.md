@@ -281,11 +281,12 @@ Tests cover:
 
 **End-to-End Tests:**
 - Framework: Playwright
-- Install root dependencies (Playwright): `npm install`
+- Location: `apps/e2e/tests/`
+- Switch to apps/e2e directory: `cd apps/e2e`
+- Install Playwright dependencies: `npm install`
 - Install browsers: `npx playwright install --with-deps`
 - Run tests: `npx playwright test`
 - Run with UI: `npx playwright test --ui`
-- Location: `e2e/`
 
 **Manual Setup for E2E Tests:**
 Before running E2E tests locally, you must start both servers:

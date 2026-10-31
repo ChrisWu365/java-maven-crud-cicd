@@ -273,11 +273,12 @@ Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部�
 
 **端到端测试：**
 - 框架：Playwright
+- 位置：`apps/e2e/tests/`
+- 切换到 apps/e2e 目录：`cd apps/e2e`
 - 安装项目依赖（Playwright）： `npm install`
 - 安装 Playwright 所需的浏览器内核及系统依赖： `npx playwright install --with-deps`
 - 运行测试：`npx playwright test`
 - 运行 UI 模式：`npx playwright test --ui`
-- 位置：`e2e/`
 
 **E2E 测试手动设置：**
 在本地运行 E2E 测试前，必须先启动两个服务器：
