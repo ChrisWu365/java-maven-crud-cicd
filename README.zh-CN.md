@@ -111,7 +111,7 @@ Azure Network Security Group 放行 SSH `22` 端口、Product API NodePort
 
 ## 本地运行
 
-要求：Java 8 和 Maven。
+要求：Java 21和 Maven。
 
 ```bash
 mvn spring-boot:run
@@ -465,7 +465,7 @@ Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
 | `staging` | `staging` | Pull request 执行 CI；push 构建、推送镜像并部署 |
 | `main` | `production` | Pull request 执行 CI；push 构建并推送镜像，部署前等待环境审批 |
 
-Pull request 不会触发部署。请在 **Settings -> Environments ->
+Pull request 不会触发部署。建议生产环境在 **Settings -> Environments ->
 production** 中配置 Required reviewers；这样部署 job 会在生产部署前暂停，
 直到授权 reviewer 批准。建议在三个 environment 中分别配置同名的环境级
 secrets，让每个环境使用各自的主机和 GHCR 凭据。手动运行仍可选择

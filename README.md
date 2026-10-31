@@ -115,7 +115,7 @@ NodePort `30080`, the inspection Web NodePort `30173`, and monitoring NodePorts
 
 ## Run locally
 
-Requirements: Java 8 and Maven.
+Requirements: Java 21 and Maven.
 
 ```bash
 mvn spring-boot:run
@@ -503,7 +503,7 @@ is:
 | `staging` | `staging` | CI on pull requests; build, publish, and deploy on push |
 | `main` | `production` | CI on pull requests; build and publish on push, then wait for environment approval before deployment |
 
-Pull requests never deploy. Configure `production` with required reviewers in
+Pull requests never deploy. Recommended for production: configure `production` with required reviewers in
 **Settings -> Environments -> production**; the workflow's deployment job then
 pauses until an authorized reviewer approves it. Use environment-level secrets
 with the same names listed below so each environment can use its own host and
