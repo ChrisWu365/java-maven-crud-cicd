@@ -37,6 +37,8 @@ This project demonstrates GitHub Actions CI/CD with two applications:
 - Multer 2.0 for file uploads
 - Swagger UI and swagger-jsdoc for API documentation
 - Google Gemini API for AI-powered inspection assistance
+- Vitest 5, React Testing Library, and jsdom for the React component tests
+- Playwright for end-to-end tests in Chromium, Firefox, and WebKit
 
 **Infrastructure & DevOps:**
 - Docker and Docker Compose

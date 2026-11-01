@@ -37,6 +37,8 @@
 - Multer 2.0 文件上传
 - Swagger UI 和 swagger-jsdoc 用于 API 文档
 - Google Gemini API 用于 AI 辅助检查
+- Vitest 5、React Testing Library 和 jsdom 用于 React 组件测试
+- Playwright 用于 Chromium、Firefox、WebKit 的端到端测试
 
 **基础设施与 DevOps：**
 - Docker、Docker Compose
