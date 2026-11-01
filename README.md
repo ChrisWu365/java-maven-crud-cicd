@@ -12,7 +12,7 @@ This project demonstrates GitHub Actions CI/CD with two applications:
 - [Technology stack](#technology-stack)
 - [System architecture](#system-architecture)
 - [Screenshots](#screenshots)
-- [Run locally](#run-locally)
+- [Local development setup](#local-development-setup)
 - [API](#api)
 - [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [Deployment options](#deployment-options)
@@ -116,19 +116,91 @@ NodePort `30080`, the inspection Web NodePort `30173`, and monitoring NodePorts
 
 ![Prometheus alerts](.github/assets/ScreenShot_Prometheus.png)
 
-## Run locally
+## Local development setup
 
-Requirements: Java 21 and Maven.
+Step-by-step instructions for preparing a development machine on Windows or
+macOS. On Linux, use the distribution package manager for the same versions; the
+macOS shell commands apply unchanged.
+
+### Prerequisites
+
+| Tool | Version | Needed for |
+| --- | --- | --- |
+| JDK | 21 | Spring Boot product API |
+| Maven | 3.6.3 or newer | Spring Boot build, tests, and quality checks |
+| Node.js | 22 or newer (24 recommended) | Inspection API, React web app, and E2E tests |
+| npm | Bundled with Node.js | Installing JavaScript dependencies |
+| Git | Any recent version | Cloning the repository |
+| Docker Desktop | Optional | `docker compose` local deployment only |
+
+The repository does not include a Maven wrapper, so Maven must be installed
+separately. No database setup is required: the product API uses an H2 in-memory
+database, and the inspection API keeps its JSON data under
+`apps/inspection-api/data`.
+
+### Step 1 - Install the toolchain
+
+**Windows (PowerShell, using winget):**
+
+```powershell
+winget install --id EclipseAdoptium.Temurin.21.JDK -e
+winget install --id Apache.Maven -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Git.Git -e
+winget install --id Docker.DockerDesktop -e   # optional
+```
+
+Close and reopen the terminal afterwards so that `PATH` and `JAVA_HOME` are
+picked up.
+
+**macOS (Homebrew):**
+
+```bash
+# Install Homebrew first if it is missing:
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+brew install openjdk@21 maven node git
+sudo ln -sfn "$(brew --prefix)/opt/openjdk@21/libexec/openjdk.jdk" \
+  /Library/Java/JavaVirtualMachines/openjdk-21.jdk
+echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 21)' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Docker Desktop (`brew install --cask docker`) is only needed for the optional
+Compose workflow.
+
+**Verify the toolchain on either OS:**
+
+```bash
+java -version    # must report 21.x
+mvn -v           # must report Maven 3.6.3+ and Java 21
+node -v          # must report v22 or newer
+npm -v
+git --version
+```
+
+`mvn -v` prints the JDK Maven will compile with. If it reports an older Java
+version, fix `JAVA_HOME` so that both `java -version` and `mvn -v` show 21.
+
+### Step 2 - Clone the repository
+
+```bash
+git clone https://github.com/ChrisWu365/java-maven-crud-cicd.git
+cd java-maven-crud-cicd
+```
+
+### Step 3 - Run the Spring Boot product API
 
 ```bash
 mvn spring-boot:run
 ```
 
-The application listens on port `8080`. The default profile is `local`, with
-Swagger UI and the OpenAPI document available at:
+The application listens on port `8080`. The default `local` profile starts H2 in
+memory and enables Swagger UI:
 
 - http://localhost:8080/swagger-ui.html
 - http://localhost:8080/v3/api-docs
+- http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:cruddb`, user `sa`)
 
 Select another profile explicitly:
 
@@ -146,13 +218,139 @@ java -jar target/product-crud-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 | `staging` | Production-like environment | Disabled |
 | `prod` | Production deployment | Disabled |
 
-Run tests and all quality checks with:
+Verify the API from a second terminal:
 
 ```bash
-mvn clean verify
+# macOS
+curl http://localhost:8080/api/products
+curl http://localhost:8080/actuator/health
+
+# Windows PowerShell
+Invoke-RestMethod http://localhost:8080/api/products
+Invoke-RestMethod http://localhost:8080/actuator/health
 ```
 
-This runs tests, Checkstyle, SpotBugs, and PMD.
+### Step 4 - Configure and run the inspection API
+
+```bash
+cd apps/inspection-api
+npm install     # use "npm ci" for a reproducible install
+```
+
+Create the local environment file from the template so your local values are
+kept next to the app:
+
+```bash
+# macOS
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+The API reads its configuration from process environment variables and does not
+load `.env` automatically, so export the same values in the terminal that starts
+the dev server:
+
+```bash
+# macOS
+export JWT_SECRET="$(openssl rand -hex 32)"
+
+# Windows PowerShell
+$env:JWT_SECRET = "change-me-to-a-long-random-secret"
+```
+
+Leaving `JWT_SECRET` unset falls back to a development-only default, which is
+acceptable for local work but must never be used outside your machine. The
+`AI_*` variables are optional; without them the API returns its deterministic
+mock suggestion. `.env` is ignored by `.gitignore`; still never commit a real
+secret.
+
+Start the API:
+
+```bash
+npm run dev
+```
+
+It listens on http://localhost:4000. Verify:
+
+```bash
+# macOS
+curl http://localhost:4000/health
+
+# Windows PowerShell
+Invoke-RestMethod http://localhost:4000/health
+```
+
+Swagger UI is available at http://localhost:4000/api-docs.
+
+### Step 5 - Run the React web app
+
+Open a new terminal and keep the inspection API running:
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+The Vite dev server listens on http://localhost:5173 and proxies `/api`,
+`/health`, and `/uploads` to `http://localhost:4000`, so `VITE_API_URL` can stay
+empty for local development. Open the app and sign in with a demo account:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@example.com` | `Admin123!` |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+
+### Step 6 - Run the automated tests
+
+| Suite | Command |
+| --- | --- |
+| Spring Boot API | `mvn clean verify` from the repository root |
+| Inspection API | `cd apps/inspection-api && npm test` |
+| Inspection Web | `cd apps/inspection-web && npm test` |
+| E2E | `cd apps/e2e && npm install && npx playwright install && npx playwright test` |
+
+The Playwright config has no `webServer` block, and `global-setup.ts` waits for
+both `http://localhost:5173` and `http://localhost:4000/health`, so start the
+inspection API and the web app first. `npx playwright install --with-deps` also
+installs OS packages and is meant for Debian/Ubuntu and CI; on macOS and Windows
+use plain `npx playwright install`.
+
+### Daily development workflow
+
+After the one-time setup, working on the inspection demo needs three terminals:
+
+```bash
+# Terminal 1 - Spring Boot product API (can be skipped when only
+# working on the inspection demo)
+mvn spring-boot:run
+
+# Terminal 2 - inspection API
+cd apps/inspection-api && npm run dev
+
+# Terminal 3 - React web app
+cd apps/inspection-web && npm run dev
+```
+
+### Notes and common issues
+
+- **Ports already in use.** The stack expects `8080` (Spring Boot), `4000`
+  (inspection API), and `5173` (Vite). Stop the conflicting process, or set
+  `PORT` for the inspection API and point `VITE_API_URL` at the API when the web
+  app needs a different origin.
+- **PowerShell and `&&`.** Windows PowerShell 5.1 does not accept `&&` as a
+  command separator. Run one command per line, or use PowerShell 7.
+- **Reset local demo data.** The inspection API seeds
+  `apps/inspection-api/data/inspections.json` on first start. Delete that file
+  (and `apps/inspection-api/data/uploads/`) to return to the seeded state, or
+  point `DATA_DIR` and `UPLOAD_DIR` at other directories.
+- **Windows firewall prompt.** Allow Node.js through the firewall so the dev
+  servers and the E2E tests can reach the local ports.
+- **Slow first Maven build.** The first `mvn verify` downloads the Spring Boot
+  dependency tree together with Checkstyle, SpotBugs, and PMD.
 
 ## API
 
@@ -193,48 +391,16 @@ The demo supports:
 - Google Gemini API integration for AI-assisted inspection drafts with a clearly labelled human-review requirement
 - A deterministic mock AI suggestion when no provider key is configured
 
-Run the API and web app locally in two terminals:
+Installation, local run commands, and the demo accounts are documented in
+[Local development setup](#local-development-setup). The API also serves
+Swagger UI and the OpenAPI document at http://localhost:4000/api-docs and
+http://localhost:4000/api-docs.json.
 
-```bash
-cd apps/inspection-api
-npm install
-copy .env.example .env
-npm run dev
-```
-
-```bash
-cd apps/inspection-web
-npm install
-npm run dev
-```
-
-The API also provides Swagger UI and OpenAPI documentation at:
-
-- http://localhost:4000/api-docs
-- http://localhost:4000/api-docs.json
-
-Open http://localhost:5173. Development-only demo accounts are:
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Inspector | `inspector@example.com` | `Inspector123!` |
-| Viewer | `viewer@example.com` | `Viewer123!` |
-| Admin | `admin@example.com` | `Admin123!` |
-
-These accounts are disabled when `NODE_ENV=production`; replace them with a
+The demo accounts are disabled when `NODE_ENV=production`; replace them with a
 real identity provider before production use. Set `JWT_SECRET` to a long random
 secret. AI integration is optional and uses Google Gemini API only: configure
 `AI_PROVIDER_URL`, `AI_API_KEY`, and `AI_MODEL` only on the backend; never put
 the key in React or commit it.
-
-Run the focused checks:
-
-```bash
-cd apps/inspection-api && npm run build && npm test
-cd apps/inspection-web && npm run build && npm test
-```
-
-Note: For React testing UI mode, ensure `@vitest/ui` is installed (`npm install --save-dev @vitest/ui`).
 
 Run both services with Docker Compose:
 
@@ -249,14 +415,16 @@ use the existing Kubernetes deployment and containerd runtime.
 
 ## Testing
 
-The project follows a testing pyramid with unit tests (70%), integration tests (20%), and E2E tests (10%).
+Commands for running each suite are listed in
+[Local development setup](#local-development-setup); this section describes what
+each suite covers. The project follows a testing pyramid with unit tests (70%),
+integration tests (20%), and E2E tests (10%).
 
 ### API Testing (Node.js/Express)
 
 **Unit & Integration Tests:**
 - Framework: Node.js built-in test runner + Supertest
 - Location: `apps/inspection-api/test/`
-- Run tests: `cd apps/inspection-api && npm test`
 
 Tests cover:
 - Authentication and JWT token generation
@@ -269,7 +437,6 @@ Tests cover:
 **Component Tests:**
 - Framework: Vitest + React Testing Library
 - Location: `apps/inspection-web/src/test/`
-- Run tests: `cd apps/inspection-web && npm test`
 - Run with UI: `npm run test:ui`
 - Run with coverage: `npm run test:coverage`
 
@@ -284,31 +451,10 @@ Tests cover:
 **End-to-End Tests:**
 - Framework: Playwright
 - Location: `apps/e2e/tests/`
-- Switch to apps/e2e directory: `cd apps/e2e`
-- Install Playwright dependencies: `npm install`
-- Install browsers: `npx playwright install --with-deps`
-- Run tests: `npx playwright test`
 - Run with UI: `npx playwright test --ui`
 
-**Manual Setup for E2E Tests:**
-Before running E2E tests locally, you must start both servers:
-
-1. Terminal 1 - Start API server:
-```bash
-cd apps/inspection-api
-npm run dev
-```
-
-2. Terminal 2 - Start web server:
-```bash
-cd apps/inspection-web
-npm run dev
-```
-
-3. Terminal 3 - Run E2E tests:
-```bash
-npx playwright test
-```
+`global-setup.ts` waits for the inspection API and the web app, so start both
+before running the suite.
 
 Tests cover:
 - Complete login flow

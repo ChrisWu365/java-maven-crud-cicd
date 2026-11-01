@@ -12,7 +12,7 @@
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
 - [截图展示](#截图展示)
-- [本地运行](#本地运行)
+- [本地开发环境搭建](#本地开发环境搭建)
 - [API](#api)
 - [Passive fire inspection demo](#passive-fire-inspection-demo)
 - [部署方式](#部署方式)
@@ -112,18 +112,88 @@ Azure Network Security Group 放行 SSH `22` 端口、Product API NodePort
 
 ![Prometheus 告警](.github/assets/ScreenShot_Prometheus.png)
 
-## 本地运行
+## 本地开发环境搭建
 
-要求：Java 21和 Maven。
+以下步骤说明如何在 Windows 或 macOS 上准备开发环境并运行本项目。
+在 Linux 上使用对应发行版的包管理器安装相同版本即可，macOS 的 shell 命令
+可以直接沿用。
+
+### 环境要求
+
+| 工具 | 版本 | 用途 |
+| --- | --- | --- |
+| JDK | 21 | Spring Boot Product API |
+| Maven | 3.6.3 及以上 | Spring Boot 构建、测试和代码质量检查 |
+| Node.js | 22 及以上（推荐 24） | 检查 API、React Web 应用和 E2E 测试 |
+| npm | 随 Node.js 安装 | 安装 JavaScript 依赖 |
+| Git | 任意较新版本 | 克隆仓库 |
+| Docker Desktop | 可选 | 仅用于 `docker compose` 本地部署 |
+
+仓库没有提供 Maven wrapper，因此需要单独安装 Maven。不需要额外配置数据库：
+Product API 使用 H2 内存数据库，检查 API 将 JSON 数据保存在
+`apps/inspection-api/data` 下。
+
+### 步骤 1 - 安装工具链
+
+**Windows（PowerShell，使用 winget）：**
+
+```powershell
+winget install --id EclipseAdoptium.Temurin.21.JDK -e
+winget install --id Apache.Maven -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Git.Git -e
+winget install --id Docker.DockerDesktop -e   # 可选
+```
+
+安装完成后请关闭并重新打开终端，使 `PATH` 和 `JAVA_HOME` 生效。
+
+**macOS（Homebrew）：**
+
+```bash
+# 如未安装 Homebrew，先执行：
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+brew install openjdk@21 maven node git
+sudo ln -sfn "$(brew --prefix)/opt/openjdk@21/libexec/openjdk.jdk" \
+  /Library/Java/JavaVirtualMachines/openjdk-21.jdk
+echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 21)' >> ~/.zshrc
+source ~/.zshrc
+```
+
+只有需要可选的 Compose 部署方式时才需要安装 Docker Desktop
+（`brew install --cask docker`）。
+
+**在两个系统上验证工具链：**
+
+```bash
+java -version    # 必须显示 21.x
+mvn -v           # 必须显示 Maven 3.6.3+ 且使用 Java 21
+node -v          # 必须显示 v22 或更高版本
+npm -v
+git --version
+```
+
+`mvn -v` 会打印 Maven 实际使用的 JDK。如果显示的是较旧的版本，请修正
+`JAVA_HOME`，确保 `java -version` 和 `mvn -v` 都显示 21。
+
+### 步骤 2 - 克隆仓库
+
+```bash
+git clone https://github.com/ChrisWu365/java-maven-crud-cicd.git
+cd java-maven-crud-cicd
+```
+
+### 步骤 3 - 运行 Spring Boot Product API
 
 ```bash
 mvn spring-boot:run
 ```
 
-应用默认监听 `8080`。默认 profile 是 `local`，Swagger UI 和 OpenAPI 文档地址为：
+应用监听 `8080` 端口。默认的 `local` profile 会启动 H2 内存数据库并开启 Swagger UI：
 
 - http://localhost:8080/swagger-ui.html
 - http://localhost:8080/v3/api-docs
+- http://localhost:8080/h2-console（JDBC URL 为 `jdbc:h2:mem:cruddb`，用户名 `sa`）
 
 选择其他 profile：
 
@@ -133,8 +203,6 @@ mvn spring-boot:run -Dspring-boot.run.profiles=test
 java -jar target/product-crud-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 ```
 
-profile 说明：
-
 | Profile | 用途 | Swagger |
 | --- | --- | --- |
 | `local` | 本地开发，H2 | 开启 |
@@ -143,11 +211,133 @@ profile 说明：
 | `staging` | 类生产环境 | 关闭 |
 | `prod` | 生产部署 | 关闭 |
 
-完整校验命令会运行测试、Checkstyle、SpotBugs 和 PMD：
+在第二个终端验证接口：
 
 ```bash
-mvn clean verify
+# macOS
+curl http://localhost:8080/api/products
+curl http://localhost:8080/actuator/health
+
+# Windows PowerShell
+Invoke-RestMethod http://localhost:8080/api/products
+Invoke-RestMethod http://localhost:8080/actuator/health
 ```
+
+### 步骤 4 - 配置并运行检查 API
+
+```bash
+cd apps/inspection-api
+npm install     # 需要可复现安装时可使用 npm ci
+```
+
+根据模板创建本地环境文件，把本地配置保存在应用目录中：
+
+```bash
+# macOS
+cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+检查 API 从进程环境变量读取配置，并不会自动加载 `.env`，因此需要在启动
+开发服务器的同一个终端中导出相同变量：
+
+```bash
+# macOS
+export JWT_SECRET="$(openssl rand -hex 32)"
+
+# Windows PowerShell
+$env:JWT_SECRET = "change-me-to-a-long-random-secret"
+```
+
+未设置 `JWT_SECRET` 时会回退到仅供开发使用的默认值，本地调试可以接受，
+但不能用于本机以外的任何环境。`AI_*` 变量是可选的，未配置时 API 返回
+确定性的 mock 建议。`.env` 已包含在 `.gitignore` 中，请不要提交真实密钥。
+
+启动检查 API：
+
+```bash
+npm run dev
+```
+
+服务监听 http://localhost:4000，验证方式：
+
+```bash
+# macOS
+curl http://localhost:4000/health
+
+# Windows PowerShell
+Invoke-RestMethod http://localhost:4000/health
+```
+
+Swagger UI 位于 http://localhost:4000/api-docs。
+
+### 步骤 5 - 运行 React Web 应用
+
+新开一个终端，并保持检查 API 继续运行：
+
+```bash
+cd apps/inspection-web
+npm install
+npm run dev
+```
+
+Vite 开发服务器监听 http://localhost:5173，并将 `/api`、`/health` 和
+`/uploads` 代理到 `http://localhost:4000`，因此本地开发时 `VITE_API_URL`
+可以保持为空。打开页面后使用 demo 账号登录：
+
+| 角色 | Email | 密码 |
+| --- | --- | --- |
+| Admin | `admin@example.com` | `Admin123!` |
+| Inspector | `inspector@example.com` | `Inspector123!` |
+| Viewer | `viewer@example.com` | `Viewer123!` |
+
+### 步骤 6 - 运行自动化测试
+
+| 测试套件 | 命令 |
+| --- | --- |
+| Spring Boot API | 在仓库根目录执行 `mvn clean verify` |
+| 检查 API | `cd apps/inspection-api && npm test` |
+| 检查 Web | `cd apps/inspection-web && npm test` |
+| E2E | `cd apps/e2e && npm install && npx playwright install && npx playwright test` |
+
+Playwright 配置中没有 `webServer` 块，`global-setup.ts` 会等待
+`http://localhost:5173` 和 `http://localhost:4000/health`，因此必须先启动
+检查 API 和 Web 应用。`npx playwright install --with-deps` 还会安装系统依赖，
+仅适用于 Debian/Ubuntu 和 CI；在 macOS 与 Windows 上使用
+`npx playwright install` 即可。
+
+### 日常开发流程
+
+完成一次性配置后，开发检查演示通常需要三个终端：
+
+```bash
+# 终端 1 - Spring Boot Product API（只开发检查演示时可以跳过）
+mvn spring-boot:run
+
+# 终端 2 - 检查 API
+cd apps/inspection-api && npm run dev
+
+# 终端 3 - React Web 应用
+cd apps/inspection-web && npm run dev
+```
+
+### 说明与常见问题
+
+- **端口被占用。** 项目默认使用 `8080`（Spring Boot）、`4000`（检查 API）
+  和 `5173`（Vite）。请停止占用端口的进程，或为检查 API 设置 `PORT`，并在
+  Web 应用需要访问其他源时通过 `VITE_API_URL` 指向该 API。
+- **PowerShell 与 `&&`。** Windows PowerShell 5.1 不支持用 `&&` 连接命令。
+  请每行执行一条命令，或改用 PowerShell 7。
+- **重置本地演示数据。** 检查 API 首次启动时会生成
+  `apps/inspection-api/data/inspections.json`。删除该文件（以及
+  `apps/inspection-api/data/uploads/`）即可恢复初始数据，也可以通过
+  `DATA_DIR` 和 `UPLOAD_DIR` 指向其他目录。
+- **Windows 防火墙提示。** 请允许 Node.js 通过防火墙，否则开发服务器和
+  E2E 测试可能无法访问本地端口。
+- **首次 Maven 构建较慢。** 第一次执行 `mvn verify` 会下载 Spring Boot
+  依赖以及 Checkstyle、SpotBugs 和 PMD。
 
 ## API
 
@@ -187,47 +377,14 @@ API 保持不变；检查业务使用独立的 Node.js 服务和 React 应用。
 - Google Gemini API 集成用于 AI 辅助检查草稿，并明确标记必须人工复核
 - 未配置 AI key 时使用确定性的 mock 建议
 
-本地启动 API 和前端（两个终端）：
-
-```bash
-cd apps/inspection-api
-npm install
-copy .env.example .env
-npm run dev
-```
-
-```bash
-cd apps/inspection-web
-npm install
-npm run dev
-```
-
-API 同时提供 Swagger UI 和 OpenAPI 文档：
-
-- http://localhost:4000/api-docs
-- http://localhost:4000/api-docs.json
-
-打开 http://localhost:5173。开发环境 demo 账号：
-
-| 角色 | Email | 密码 |
-| --- | --- | --- |
-| Inspector | `inspector@example.com` | `Inspector123!` |
-| Viewer | `viewer@example.com` | `Viewer123!` |
-| Admin | `admin@example.com` | `Admin123!` |
+安装步骤、本地启动命令和 demo 账号见[本地开发环境搭建](#本地开发环境搭建)。
+API 同时提供 Swagger UI 和 OpenAPI 文档：http://localhost:4000/api-docs 与
+http://localhost:4000/api-docs.json。
 
 这些账号在 `NODE_ENV=production` 时会禁用；生产环境应接入真实身份
 提供商。请将 `JWT_SECRET` 设置为足够长的随机值。AI 集成是可选的，
 仅支持 Google Gemini API：只在后端配置 `AI_PROVIDER_URL`、`AI_API_KEY`
 和 `AI_MODEL`，不要把 key 放进 React 或提交到仓库。
-
-运行检查：
-
-```bash
-cd apps/inspection-api && npm run build && npm test
-cd apps/inspection-web && npm run build && npm test
-```
-
-注意：如需使用 React 测试 UI 模式，请确保已安装 `@vitest/ui`（`npm install --save-dev @vitest/ui`）。
 
 使用 Docker Compose 同时启动：
 
@@ -241,14 +398,15 @@ Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部�
 
 ## 测试
 
-本项目遵循测试金字塔原则：单元测试（70%）、集成测试（20%）和 E2E 测试（10%）。
+各测试套件的命令见[本地开发环境搭建](#本地开发环境搭建)，本节说明每个套件的
+覆盖范围。本项目遵循测试金字塔原则：单元测试（70%）、集成测试（20%）和
+E2E 测试（10%）。
 
 ### API 测试（Node.js/Express）
 
 **单元测试和集成测试：**
 - 框架：Node.js 内置测试运行器 + Supertest
 - 位置：`apps/inspection-api/test/`
-- 运行测试：`cd apps/inspection-api && npm test`
 
 测试覆盖：
 - 身份认证和 JWT 令牌生成
@@ -261,7 +419,6 @@ Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部�
 **组件测试：**
 - 框架：Vitest + React Testing Library
 - 位置：`apps/inspection-web/src/test/`
-- 运行测试：`cd apps/inspection-web && npm test`
 - 运行 UI 模式：`npm run test:ui`
 - 运行覆盖率：`npm run test:coverage`
 
@@ -276,31 +433,9 @@ Docker Compose 仅作为本地开发的可选快捷方式，不是服务器部�
 **端到端测试：**
 - 框架：Playwright
 - 位置：`apps/e2e/tests/`
-- 切换到 apps/e2e 目录：`cd apps/e2e`
-- 安装项目依赖（Playwright）： `npm install`
-- 安装 Playwright 所需的浏览器内核及系统依赖： `npx playwright install --with-deps`
-- 运行测试：`npx playwright test`
 - 运行 UI 模式：`npx playwright test --ui`
 
-**E2E 测试手动设置：**
-在本地运行 E2E 测试前，必须先启动两个服务器：
-
-1. 终端 1 - 启动 API 服务器：
-```bash
-cd apps/inspection-api
-npm run dev
-```
-
-2. 终端 2 - 启动 Web 服务器：
-```bash
-cd apps/inspection-web
-npm run dev
-```
-
-3. 终端 3 - 运行 E2E 测试：
-```bash
-npx playwright test
-```
+`global-setup.ts` 会等待检查 API 和 Web 应用就绪，因此运行该套件前需要先启动两者。
 
 测试覆盖：
 - 完整登录流程
