@@ -921,6 +921,25 @@ kubectl -n product-crud logs -l app=product-crud --all-containers=true --tail=20
 kubectl -n product-crud describe pod -l app=product-crud
 ```
 
+### EACCES: permission denied, open '/app/data/inspections.json'
+
+The application images run as a non-root user (UID 1000), but the inspection data
+volume keeps the ownership of the host directory. Writes to the inspection store
+and photo uploads then fail while `/health` still reports ready, so the UI shows
+`Internal Server Error`.
+
+The `inspection-api` Deployment has a `fix-data-ownership` init container that
+chowns the volume on every start. To repair an already running pod without a new
+rollout, run this on the node (not inside the pod, whose process cannot chown):
+
+```bash
+sudo chown -R 1000:1000 /var/lib/product-crud/inspection-data
+```
+
+For the Docker Compose variant the same ownership rule applies to the
+`inspection-data` volume; recreate an old volume created by a root-running
+container with `docker compose -f deployment/inspection/docker-compose.yml down -v`.
+
 ### progress deadline exceeded
 
 This is a summary error meaning that no Pod became Ready before the Deployment

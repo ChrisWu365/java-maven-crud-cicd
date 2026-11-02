@@ -871,3 +871,21 @@ kubectl -n product-crud describe deployment product-crud
 kubectl -n product-crud describe pod -l app=product-crud
 kubectl get nodes
 ```
+
+### `EACCES: permission denied, open '/app/data/inspections.json'`
+
+应用镜像以非 root 用户（UID 1000）运行，但检查数据卷保留的是宿主机目录的属主。
+此时写入 inspections.json 和上传照片都会失败，而 `/health` 仍然正常，页面因此只显示
+`Internal Server Error`。
+
+`inspection-api` Deployment 中增加了 `fix-data-ownership` init 容器，每次启动都会
+把数据目录改为 1000:1000。若要在不重新发布的情况下修复已在运行的 Pod，请在节点上
+（而不是容器内，容器进程没有权限）执行：
+
+```bash
+sudo chown -R 1000:1000 /var/lib/product-crud/inspection-data
+```
+
+Docker Compose 方式同理，`inspection-data` 卷也遵循该属主规则；如果卷是由此前以
+root 运行的容器创建的，请用
+`docker compose -f deployment/inspection/docker-compose.yml down -v` 重建卷。

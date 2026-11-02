@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: product-crud
-          image: IMAGE_REF
+          image: product-crud:replace-me
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

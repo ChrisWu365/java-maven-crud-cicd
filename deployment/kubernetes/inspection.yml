@@ -47,18 +47,32 @@ spec:
       imagePullSecrets:
         - name: ghcr-credentials
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        # hostPath volumes ignore fsGroup, and the application image runs as the
+        # non-root `node` user (UID 1000). The data directory keeps whatever
+        # ownership the host has, so align it before the API starts writing
+        # inspections.json and uploaded photos.
+        - name: fix-data-ownership
+          image: inspection-api:replace-me
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "chown -R 1000:1000 /app/data"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
       containers:
         - name: inspection-api
-          image: INSPECTION_API_IMAGE
+          image: inspection-api:replace-me
           imagePullPolicy: IfNotPresent
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             allowPrivilegeEscalation: false
           env:
             - name: NODE_ENV
@@ -154,7 +168,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: inspection-web
-          image: INSPECTION_WEB_IMAGE
+          image: inspection-web:replace-me
           imagePullPolicy: IfNotPresent
           securityContext:
             # The nginx master process must stay root to bind port 80; drop the

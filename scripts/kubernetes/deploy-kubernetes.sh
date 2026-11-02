@@ -81,7 +81,7 @@ kubectl -n "${NAMESPACE}" create secret docker-registry ghcr-credentials \
   --docker-password="${GHCR_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-sed "s|IMAGE_REF|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+sed "s|product-crud:replace-me|${IMAGE_REF}|g; s|__SPRING_PROFILE__|${SPRING_PROFILE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-deployment.yml" | kubectl apply -n "${NAMESPACE}" -f -
 sed "s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/product-crud-service.yml" | kubectl apply -n "${NAMESPACE}" -f -
@@ -104,7 +104,7 @@ kubectl -n "${NAMESPACE}" create secret generic inspection-secrets \
   --from-literal=ai-provider-url="${AI_PROVIDER_URL:-}" \
   --from-literal=ai-model="${AI_MODEL:-}" \
   --dry-run=client -o yaml | kubectl apply -f -
-sed "s|INSPECTION_API_IMAGE|${INSPECTION_API_IMAGE}|g; s|INSPECTION_WEB_IMAGE|${INSPECTION_WEB_IMAGE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
+sed "s|inspection-api:replace-me|${INSPECTION_API_IMAGE}|g; s|inspection-web:replace-me|${INSPECTION_WEB_IMAGE}|g; s|namespace: product-crud|namespace: ${NAMESPACE}|g" \
   "${MANIFEST_DIR}/inspection.yml" | kubectl apply -n "${NAMESPACE}" -f -
 kubectl -n "${NAMESPACE}" rollout restart deployment inspection-api
 
