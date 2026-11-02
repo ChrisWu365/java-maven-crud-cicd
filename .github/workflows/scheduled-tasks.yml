@@ -1,0 +1,82 @@
+name: Scheduled Maintenance
+
+# Nightly hygiene: dependency advisories and container image vulnerabilities.
+# Nothing here blocks a merge; failures surface as a failed scheduled run.
+on:
+  schedule:
+    # 18:00 UTC = 02:00 Asia/Shanghai
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-tasks
+  cancel-in-progress: false
+
+jobs:
+  dependency-audit:
+    name: Dependency audit (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [ inspection-api, inspection-web, e2e ]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+      - name: Audit lockfile
+        working-directory: apps/${{ matrix.app }}
+        run: npm audit --audit-level=high
+
+  image-scan:
+    name: Image scan (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: product-crud
+            suffix: ""
+          - name: inspection-api
+            suffix: "-inspection-api"
+          - name: inspection-web
+            suffix: "-inspection-web"
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image reference
+        run: |
+          echo "IMAGE_REF=ghcr.io/${GITHUB_REPOSITORY,,}${{ matrix.suffix }}:latest" >> "${GITHUB_ENV}"
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          format: table
+          output: trivy-${{ matrix.name }}.txt
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Publish scan result
+        if: always()
+        run: cat trivy-${{ matrix.name }}.txt >> "${GITHUB_STEP_SUMMARY}"

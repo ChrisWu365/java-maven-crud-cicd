@@ -1,0 +1,62 @@
+name: CI Main
+
+# Branch integration flow: validate, publish the three images under an immutable
+# tag, then deploy the same tag. Build happens exactly once per commit.
+on:
+  push:
+    branches: [ "dev", "staging", "main" ]
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: Deployment target
+        required: true
+        default: kubernetes
+        type: choice
+        options:
+          - kubernetes
+          - docker
+
+permissions:
+  contents: read
+
+concurrency:
+  # Do not cancel an in-flight build or deployment when a new commit lands.
+  group: ci-main-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  spring:
+    name: Spring Boot CI
+    uses: ./.github/workflows/_ci-spring.yml
+
+  inspection:
+    name: Inspection Demo CI
+    uses: ./.github/workflows/_ci-inspection.yml
+
+  images:
+    name: Build and publish images
+    needs: [ spring, inspection ]
+    uses: ./.github/workflows/_build-images.yml
+    with:
+      # Only the production branch moves `latest`; feature branches must not.
+      push_latest: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      packages: write
+
+  deploy:
+    name: Deploy
+    needs: [ images ]
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      target: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_target || 'kubernetes' }}
+      environment_name: ${{ github.ref_name == 'dev' && 'development' || github.ref_name == 'staging' && 'staging' || 'production' }}
+      spring_profile: ${{ github.ref_name == 'dev' && 'dev' || github.ref_name == 'staging' && 'staging' || 'prod' }}
+      image: ${{ needs.images.outputs.image }}
+      tag: ${{ needs.images.outputs.tag }}
+      inspection_api_image: ${{ needs.images.outputs.inspection_api_image }}
+      inspection_web_image: ${{ needs.images.outputs.inspection_web_image }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read

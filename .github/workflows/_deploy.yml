@@ -1,0 +1,152 @@
+name: Reusable Deploy
+
+# Reusable workflow: deploys an already published immutable image over SSH.
+# Callers own the trigger; this workflow owns the environment gate, the
+# per-environment concurrency lock, and the remote deployment procedure.
+#
+# Callers must pass `secrets: inherit` so the environment-scoped secrets below
+# resolve inside the gated job.
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Deployment target (kubernetes or docker)
+        required: true
+        type: string
+      environment_name:
+        description: GitHub Environment that guards this deployment
+        required: true
+        type: string
+      image:
+        description: Product API image repository
+        required: true
+        type: string
+      tag:
+        description: Immutable image tag
+        required: true
+        type: string
+      inspection_api_image:
+        description: Inspection API image repository
+        required: true
+        type: string
+      inspection_web_image:
+        description: Inspection web image repository
+        required: true
+        type: string
+      spring_profile:
+        description: Spring profile for the product API
+        required: false
+        default: prod
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  kubernetes:
+    name: Kubernetes (${{ inputs.environment_name }})
+    if: inputs.target == 'kubernetes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.environment_name }}
+    concurrency:
+      group: deploy-kubernetes-${{ inputs.environment_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Copy Kubernetes deployment files
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ secrets.K8S_VM_IP }}
+          username: ${{ secrets.K8S_VM_USER }}
+          key: ${{ secrets.K8S_VM_KEY }}
+          port: 22
+          source: "deployment/kubernetes,deployment/monitoring,scripts/kubernetes"
+          target: "/home/${{ secrets.K8S_VM_USER }}/app/"
+          strip_components: 0
+      - name: Deploy image over SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          APP_DIR: "/home/${{ secrets.K8S_VM_USER }}/app"
+          IMAGE_REF: "${{ inputs.image }}:${{ inputs.tag }}"
+          SPRING_PROFILE: ${{ inputs.spring_profile }}
+          INSPECTION_API_IMAGE: "${{ inputs.inspection_api_image }}:${{ inputs.tag }}"
+          INSPECTION_WEB_IMAGE: "${{ inputs.inspection_web_image }}:${{ inputs.tag }}"
+          GHCR_USERNAME: ${{ secrets.K8S_GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.K8S_GHCR_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          JWT_SECRET: ${{ secrets.INSPECTION_JWT_SECRET }}
+          AI_API_KEY: ${{ secrets.INSPECTION_AI_API_KEY }}
+          AI_PROVIDER_URL: ${{ secrets.INSPECTION_AI_PROVIDER_URL }}
+          AI_MODEL: ${{ secrets.INSPECTION_AI_MODEL }}
+        with:
+          host: ${{ secrets.K8S_VM_IP }}
+          username: ${{ secrets.K8S_VM_USER }}
+          key: ${{ secrets.K8S_VM_KEY }}
+          port: 22
+          envs: APP_DIR,IMAGE_REF,SPRING_PROFILE,INSPECTION_API_IMAGE,INSPECTION_WEB_IMAGE,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,JWT_SECRET,AI_API_KEY,AI_PROVIDER_URL,AI_MODEL
+          script: |
+            GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
+              JWT_SECRET="${JWT_SECRET}" \
+              AI_API_KEY="${AI_API_KEY}" \
+              AI_PROVIDER_URL="${AI_PROVIDER_URL}" \
+              AI_MODEL="${AI_MODEL}" \
+              bash "${APP_DIR}/scripts/kubernetes/deploy-kubernetes.sh" "${APP_DIR}" "${IMAGE_REF}" "${SPRING_PROFILE}" "${INSPECTION_API_IMAGE}" "${INSPECTION_WEB_IMAGE}"
+
+  docker:
+    name: Docker Compose (${{ inputs.environment_name }})
+    if: inputs.target == 'docker'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment_name }}
+    concurrency:
+      group: deploy-docker-${{ inputs.environment_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Copy Docker deployment files
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ secrets.DOCKER_VM_IP }}
+          username: ${{ secrets.DOCKER_VM_USER }}
+          key: ${{ secrets.DOCKER_VM_KEY }}
+          port: 22
+          source: "deployment/docker,deployment/monitoring,scripts/docker,scripts/monitoring"
+          target: "/home/${{ secrets.DOCKER_VM_USER }}/app/"
+          strip_components: 0
+      - name: Deploy image over SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          APP_DIR: "/home/${{ secrets.DOCKER_VM_USER }}/app"
+          IMAGE_REF: "${{ inputs.image }}:${{ inputs.tag }}"
+          # A PAT keeps the remote docker login valid after the job ends; the
+          # short-lived GITHUB_TOKEN is only a fallback.
+          GHCR_USERNAME: ${{ secrets.GHCR_PULL_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          PROMETHEUS_TARGET: host.docker.internal:8080
+        with:
+          host: ${{ secrets.DOCKER_VM_IP }}
+          username: ${{ secrets.DOCKER_VM_USER }}
+          key: ${{ secrets.DOCKER_VM_KEY }}
+          port: 22
+          envs: APP_DIR,IMAGE_REF,GHCR_USERNAME,GHCR_TOKEN,GRAFANA_ADMIN_PASSWORD,PROMETHEUS_TARGET
+          script: |
+            bash "${APP_DIR}/scripts/docker/deploy-docker.sh" "${APP_DIR}" "${IMAGE_REF}"
+            sudo -n env GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" \
+              PROMETHEUS_TARGET="${PROMETHEUS_TARGET}" \
+              bash "${APP_DIR}/scripts/monitoring/deploy-monitoring.sh" "${APP_DIR}"

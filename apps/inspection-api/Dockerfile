@@ -12,6 +12,8 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
-RUN mkdir -p /app/data/uploads
+RUN mkdir -p /app/data/uploads \
+    && chown -R node:node /app
+USER node
 EXPOSE 4000
 CMD ["node", "dist/src/server.js"]

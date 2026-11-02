@@ -334,13 +334,12 @@ Vite 开发服务器监听 http://localhost:5173，并将 `/api`、`/health` 和
 | Spring Boot API | 在仓库根目录执行 `mvn clean verify` |
 | 检查 API | `cd apps/inspection-api && npm test` |
 | 检查 Web | `cd apps/inspection-web && npm test` |
-| E2E | `cd apps/e2e && npm install && npx playwright install && npx playwright test` |
+| E2E | `cd apps/e2e && npm install && npx playwright install && npm test` |
 
-Playwright 配置中没有 `webServer` 块，`global-setup.ts` 会等待
-`http://localhost:5173` 和 `http://localhost:4000/health`，因此必须先启动
-检查 API 和 Web 应用。`npx playwright install --with-deps` 还会安装系统依赖，
-仅适用于 Debian/Ubuntu 和 CI；在 macOS 与 Windows 上使用
-`npx playwright install` 即可。
+Playwright 配置中声明了 `webServer` 块，套件会自动启动检查 API 和 Web 应用，并等待
+`http://localhost:4000/health` 与 `http://localhost:5173` 就绪，不需要额外终端。
+`npx playwright install --with-deps` 还会安装系统依赖，仅适用于 Debian/Ubuntu 和 CI；
+在 macOS 与 Windows 上使用 `npx playwright install` 即可。
 
 ### 日常开发流程
 
@@ -469,7 +468,8 @@ E2E 测试（10%）。
 - 位置：`apps/e2e/tests/`
 - 运行 UI 模式：`npx playwright test --ui`
 
-`global-setup.ts` 会等待检查 API 和 Web 应用就绪，因此运行该套件前需要先启动两者。
+`playwright.config.ts` 通过 `webServer` 块启动检查 API 和 Web 应用：本地会复用已在
+运行的服务器，CI 中则每次全新启动。
 
 测试覆盖：
 - 完整登录流程
@@ -480,11 +480,11 @@ E2E 测试（10%）。
 
 ### CI/CD 集成
 
-GitHub Actions 工作流自动运行：
-- 每次提交运行单元和集成测试
+`.github/workflows/` 下的工作流自动运行：
+- 每次 push 和 pull request 运行单元与集成测试
 - Pull request 运行组件测试
-- 部署前运行 E2E 测试
-- 上传 Playwright 报告为构建产物
+- 发布镜像前运行 E2E 测试
+- 上传 Surefire、Vitest 覆盖率和 Playwright 报告为构建产物
 
 测试覆盖率目标：
 - 单元测试：80%+
@@ -718,20 +718,42 @@ Prometheus 保留 15 天数据，以及较少的 Grafana 看板访问量。
 
 ## GitHub Actions CI/CD
 
-工作流文件是 `.github/workflows/cicd.yml`。CI gate 会同时校验原有 Maven
-应用和 TypeScript 检查演示，校验通过后才允许发布镜像。分支与环境的对应关系如下：
+流水线按生命周期拆分，而不是集中在一个文件里。构建和测试逻辑以可复用工作流定义一次，
+再由触发工作流调用，因此各文件之间没有重复步骤。
 
-| 分支 | GitHub Environment | 行为 |
+### 工作流结构
+
+| 文件 | 触发方式 | 职责 |
 | --- | --- | --- |
-| `dev` | `development` | Pull request 执行 CI；push 构建、推送镜像并部署 |
-| `staging` | `staging` | Pull request 执行 CI；push 构建、推送镜像并部署 |
-| `main` | `production` | Pull request 执行 CI；push 构建并推送镜像，部署前等待环境审批 |
+| `pr-validation.yml` | 目标为 `staging` 或 `main` 的 `pull_request` | 快速校验：Maven verify、单元测试、E2E；不发布镜像、不部署，fork PR 接触不到任何 secret |
+| `ci-main.yml` | `dev`、`staging`、`main` 的 `push`；手动触发 | 执行 CI、推送三个镜像，然后部署同一个标签 |
+| `cd-deploy.yml` | 标签 `v*.*.*`；手动触发 | 只部署 GHCR 中已存在的镜像，不重新构建 |
+| `scheduled-tasks.yml` | 每日定时（北京时间 02:00）；手动触发 | 各应用 `npm audit` 与已发布镜像的 Trivy 扫描 |
+| `_ci-spring.yml` | 被上述工作流调用 | `mvn verify`（测试 + Checkstyle、PMD、SpotBugs）和 Surefire 报告 |
+| `_ci-inspection.yml` | 被上述工作流调用 | TypeScript 构建、单元测试、Playwright E2E、覆盖率与报告产物 |
+| `_build-images.yml` | 由 `ci-main.yml` 调用 | Buildx 构建并以不可变 `sha-<commit>` 标签推送到 GHCR |
+| `_deploy.yml` | 由 `ci-main.yml`、`cd-deploy.yml` 调用 | 在环境门禁后通过 SSH 执行 Kubernetes 或 Docker 部署 |
+
+### 分支、环境与部署对应关系
+
+| 事件 | 分支 | GitHub Environment | 行为 |
+| --- | --- | --- | --- |
+| Pull request | 目标 `staging`、`main` | 无 | 仅校验 |
+| Push | `dev` | `development` | 校验、推送镜像、部署 |
+| Push | `staging` | `staging` | 校验、推送镜像、部署 |
+| Push | `main` | `production` | 校验、推送镜像，部署前等待环境审批 |
+| 标签 `v*.*.*` | — | `production` | 部署该标签提交对应的 `sha-<commit>` 镜像 |
 
 Pull request 不会触发部署。建议生产环境在 **Settings -> Environments ->
 production** 中配置 Required reviewers；这样部署 job 会在生产部署前暂停，
 直到授权 reviewer 批准。建议在三个 environment 中分别配置同名的环境级
 secrets，让每个环境使用各自的主机和 GHCR 凭据。手动运行仍可选择
 Kubernetes 或 Docker。
+
+工作流或 job 名称变更会改变 check 名称，切换后需要同步更新分支保护中的
+required status checks。
+
+### Secrets
 
 请在每个 GitHub Environment 中配置以下 secrets（使用相同名称，workflow
 会根据目标分支读取对应环境的值）：
@@ -741,13 +763,34 @@ Kubernetes 或 Docker。
 | `K8S_VM_IP`、`K8S_VM_USER`、`K8S_VM_KEY` | Kubernetes SSH |
 | `K8S_GHCR_USERNAME`、`K8S_GHCR_TOKEN` | Kubernetes 拉取 GHCR 镜像 |
 | `DOCKER_VM_IP`、`DOCKER_VM_USER`、`DOCKER_VM_KEY` | Docker Compose SSH |
+| `GHCR_PULL_USERNAME`、`GHCR_PULL_TOKEN` | 可选的 Docker 主机 GHCR 拉取凭据；缺省时回退到 `github.actor` 和 `GITHUB_TOKEN` |
 | `GRAFANA_ADMIN_PASSWORD` | 监控部署使用的 Grafana 管理员密码 |
 | `INSPECTION_JWT_SECRET` | Inspection API JWT 签名密钥 |
 | `INSPECTION_AI_API_KEY`、`INSPECTION_AI_PROVIDER_URL`、`INSPECTION_AI_MODEL` | 可选的后端 AI 配置 |
 
-`publish` job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像；
-Kubernetes 节点使用单独的 `K8S_GHCR_TOKEN` 拉取镜像。private GHCR package
-需要 PAT 具备 `read:packages`，组织启用 SSO 时还要对 PAT 授权 SSO。
+构建 job 使用 Actions 自动提供的 `GITHUB_TOKEN` 推送镜像。部署主机使用具备
+`read:packages` 的 PAT 拉取镜像；`GITHUB_TOKEN` 会在 job 结束后失效，因此
+Kubernetes 和 Docker 主机都应使用 PAT。组织启用 SSO 时还要对 PAT 授权 SSO。
+
+环境级 secret 由可复用的部署 job 解析：该 job 声明
+`environment: ${{ inputs.environment_name }}`，并通过 `secrets: inherit`
+接收调用方 secrets。如果改为把部署 job 直接内联到 `ci-main.yml`，请在
+该 job 上声明同样的 `environment`。
+
+### 流水线保障
+
+- Action 全部固定到 commit SHA，`dependabot.yml` 每周统一升级它们以及 Maven、
+  npm 和 Docker 依赖。
+- 每个 workflow 顶部声明 `permissions: contents: read`，仅在构建镜像时提升为
+  `packages: write`，部署时使用 `packages: read`。
+- 并发控制会取消被后续提交取代的 PR 运行，但不会打断分支或部署运行；部署还会
+  按环境串行执行。
+- Maven 与 npm 依赖使用缓存，三个镜像各自使用独立的 GHA 构建缓存作用域。
+- 每次提交只构建一次镜像，部署时按标签引用，保证通过 CI 的产物就是上线产物；
+  只有 `main` 会移动 `latest` 标签。
+- 所有 job 都设置了超时，测试报告、覆盖率和 Playwright 结果作为产物上传。
+- 每日 `scheduled-tasks.yml` 会暴露依赖与镜像漏洞，但不阻塞合并；失败运行可在
+  Actions 页面看到。
 
 CI 失败时先在目标主机检查：
 

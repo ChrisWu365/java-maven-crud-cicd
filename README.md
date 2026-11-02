@@ -345,13 +345,14 @@ empty for local development. Open the app and sign in with a demo account:
 | Spring Boot API | `mvn clean verify` from the repository root |
 | Inspection API | `cd apps/inspection-api && npm test` |
 | Inspection Web | `cd apps/inspection-web && npm test` |
-| E2E | `cd apps/e2e && npm install && npx playwright install && npx playwright test` |
+| E2E | `cd apps/e2e && npm install && npx playwright install && npm test` |
 
-The Playwright config has no `webServer` block, and `global-setup.ts` waits for
-both `http://localhost:5173` and `http://localhost:4000/health`, so start the
-inspection API and the web app first. `npx playwright install --with-deps` also
-installs OS packages and is meant for Debian/Ubuntu and CI; on macOS and Windows
-use plain `npx playwright install`.
+The Playwright config declares a `webServer` block, so the suite starts the
+inspection API and the web app itself and waits for both
+`http://localhost:4000/health` and `http://localhost:5173`; no separate terminal
+is needed. `npx playwright install --with-deps` also installs OS packages and is
+meant for Debian/Ubuntu and CI; on macOS and Windows use plain
+`npx playwright install`.
 
 ### Daily development workflow
 
@@ -487,8 +488,9 @@ Tests cover:
 - Location: `apps/e2e/tests/`
 - Run with UI: `npx playwright test --ui`
 
-`global-setup.ts` waits for the inspection API and the web app, so start both
-before running the suite.
+`playwright.config.ts` starts the inspection API and the web app through its
+`webServer` block, reusing servers that are already running locally and starting
+them fresh in CI.
 
 Tests cover:
 - Complete login flow
@@ -499,11 +501,11 @@ Tests cover:
 
 ### CI/CD Integration
 
-The GitHub Actions workflow automatically runs:
-- Unit and integration tests on every commit
+The workflows under `.github/workflows/` automatically run:
+- Unit and integration tests on every push and pull request
 - Component tests on pull requests
-- E2E tests before deployment
-- Uploads Playwright reports as artifacts
+- E2E tests before an image is published
+- Uploads Surefire, Vitest coverage, and Playwright reports as artifacts
 
 Test coverage targets:
 - Unit tests: 80%+
@@ -765,39 +767,86 @@ Prometheus storage from the actual samples-per-second and retention period.
 
 ## GitHub Actions CI/CD
 
-The workflow is `.github/workflows/cicd.yml`. Its CI gate validates both the
-original Maven application and the TypeScript inspection demo before an image
-can be published. The branch-to-environment mapping
-is:
+The pipeline is split by lifecycle instead of living in one file. Build and test
+logic is defined once as a reusable workflow and called by the trigger
+workflows, so no step is copied between files.
 
-| Branch | GitHub Environment | Behavior |
+### Workflow layout
+
+| File | Trigger | Responsibility |
 | --- | --- | --- |
-| `dev` | `development` | CI on pull requests; build, publish, and deploy on push |
-| `staging` | `staging` | CI on pull requests; build, publish, and deploy on push |
-| `main` | `production` | CI on pull requests; build and publish on push, then wait for environment approval before deployment |
+| `pr-validation.yml` | `pull_request` to `staging` or `main` | Fast gate: Maven verify, unit tests, E2E. Never publishes or deploys, so fork pull requests reach no secret. |
+| `ci-main.yml` | `push` to `dev`, `staging`, `main`; manual dispatch | Runs CI, publishes the three images, then deploys that exact tag. |
+| `cd-deploy.yml` | Tag `v*.*.*`; manual dispatch | Deploys an image that already exists in GHCR. Never rebuilds. |
+| `scheduled-tasks.yml` | Nightly cron (02:00 Asia/Shanghai); manual dispatch | `npm audit` per app and a Trivy scan of the published images. |
+| `_ci-spring.yml` | Called by the workflows above | `mvn verify` (tests plus Checkstyle, PMD, and SpotBugs) and Surefire reports. |
+| `_ci-inspection.yml` | Called by the workflows above | TypeScript build, unit tests, Playwright E2E, coverage and report artifacts. |
+| `_build-images.yml` | Called by `ci-main.yml` | Buildx build and GHCR push under an immutable `sha-<commit>` tag. |
+| `_deploy.yml` | Called by `ci-main.yml` and `cd-deploy.yml` | Kubernetes or Docker deployment over SSH behind an environment gate. |
 
-Pull requests never deploy. Recommended for production: configure `production` with required reviewers in
-**Settings -> Environments -> production**; the workflow's deployment job then
-pauses until an authorized reviewer approves it. Use environment-level secrets
-with the same names listed below so each environment can use its own host and
-GHCR credentials. Manual runs can still choose Kubernetes or Docker.
+### Branch, environment, and deployment mapping
 
-Configure these secrets in each GitHub Environment (using the same names so the
-workflow can select the values for the target branch):
+| Event | Branch | GitHub Environment | Behavior |
+| --- | --- | --- | --- |
+| Pull request | targets `staging`, `main` | none | Validate only |
+| Push | `dev` | `development` | Validate, publish, deploy |
+| Push | `staging` | `staging` | Validate, publish, deploy |
+| Push | `main` | `production` | Validate, publish, then wait for environment approval before deploying |
+| Tag `v*.*.*` | — | `production` | Deploy the existing `sha-<commit>` image of the tagged commit |
+
+Pull requests never deploy. Recommended for production: configure `production`
+with required reviewers in **Settings -> Environments -> production**; the
+deployment job then pauses until an authorized reviewer approves it. Use
+environment-level secrets with the same names listed below so each environment
+can use its own host and GHCR credentials. Manual runs can still choose
+Kubernetes or Docker.
+
+Changing workflow or job names also changes the check names, so update the
+required status checks in branch protection after switching to this layout.
+
+### Secrets
+
+Configure these in each GitHub Environment, using the same names so the workflow
+can select the values for the target branch:
 
 | Secret | Purpose |
 | --- | --- |
 | `K8S_VM_IP`, `K8S_VM_USER`, `K8S_VM_KEY` | Kubernetes SSH deployment |
 | `K8S_GHCR_USERNAME`, `K8S_GHCR_TOKEN` | Kubernetes GHCR image pull |
 | `DOCKER_VM_IP`, `DOCKER_VM_USER`, `DOCKER_VM_KEY` | Docker Compose SSH deployment |
+| `GHCR_PULL_USERNAME`, `GHCR_PULL_TOKEN` | Optional GHCR pull credentials for the Docker host; falls back to `github.actor` and `GITHUB_TOKEN` |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana administrator password for the monitoring deployment |
 | `INSPECTION_JWT_SECRET` | Inspection API JWT signing secret |
 | `INSPECTION_AI_API_KEY`, `INSPECTION_AI_PROVIDER_URL`, `INSPECTION_AI_MODEL` | Optional backend-only Google Gemini API configuration |
 
-The `publish` job uses the automatically provided `GITHUB_TOKEN` to push the
-image. Kubernetes uses the separate `K8S_GHCR_TOKEN` to pull the image. For a
-private GHCR package, the PAT needs `read:packages`; if the organization uses
-SSO, authorize the PAT for SSO as well.
+The build job pushes with the automatically provided `GITHUB_TOKEN`. Hosts pull
+with a PAT that needs `read:packages`; `GITHUB_TOKEN` expires when the job ends,
+so a PAT is the durable choice for both Kubernetes and Docker hosts. If the
+organization uses SSO, authorize the PAT for SSO as well.
+
+Environment secrets are resolved by the reusable deploy job, which declares
+`environment: ${{ inputs.environment_name }}` and receives the caller's secrets
+through `secrets: inherit`. If you ever inline the deploy job into
+`ci-main.yml` instead, declare the same `environment` on that job.
+
+### Pipeline guarantees
+
+- Actions are pinned to commit SHAs. `dependabot.yml` bumps them weekly together
+  with the Maven, npm, and Docker dependencies.
+- Every workflow declares `permissions: contents: read` and escalates only
+  `packages: write` for the image build and `packages: read` for deployments.
+- Concurrency cancels superseded pull request runs, while branch and deployment
+  runs are never cancelled mid-flight; deployments additionally serialize per
+  environment.
+- Maven and npm dependencies are cached, and each image keeps its own GHA build
+  cache scope.
+- Images are built once per commit and deployed by tag, so the artifact that
+  passed CI is the artifact that ships. Only `main` moves the `latest` tag.
+- Every job has a timeout, and test reports, coverage, and Playwright results are
+  uploaded as artifacts.
+- The nightly `scheduled-tasks.yml` run surfaces dependency and image
+  vulnerabilities without blocking merges; failed runs are visible in the
+  Actions tab.
 
 ## Monitoring
 

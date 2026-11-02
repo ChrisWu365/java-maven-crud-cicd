@@ -1,0 +1,93 @@
+name: Reusable Inspection Demo CI
+
+# Reusable workflow: builds and tests the TypeScript inspection API and web app,
+# then runs the Playwright suite. Playwright starts both dev servers itself
+# (see apps/e2e/playwright.config.ts), so no external wait-on step is needed.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Build and unit test (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: inspection-api
+            test-command: npm test
+          - app: inspection-web
+            test-command: npm run test:coverage
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+      - name: Run unit tests
+        working-directory: apps/${{ matrix.app }}
+        run: ${{ matrix.test-command }}
+      - name: Upload test coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.app }}-coverage
+          path: apps/${{ matrix.app }}/coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e:
+    name: Playwright E2E
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            apps/e2e/package-lock.json
+            apps/inspection-api/package-lock.json
+            apps/inspection-web/package-lock.json
+      - name: Install workspace dependencies
+        run: |
+          npm --prefix apps/inspection-api ci
+          npm --prefix apps/inspection-web ci
+          npm --prefix apps/e2e ci
+      - name: Install Playwright browsers
+        working-directory: apps/e2e
+        run: npx playwright install --with-deps
+      - name: Run E2E tests
+        working-directory: apps/e2e
+        run: npm test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 30

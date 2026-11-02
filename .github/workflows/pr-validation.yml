@@ -1,0 +1,25 @@
+name: PR Validation
+
+# Fast feedback gate. Runs the full test suites but never publishes an image and
+# never touches a deployment environment, so fork pull requests cannot reach any
+# secret.
+on:
+  pull_request:
+    branches: [ "staging", "main" ]
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spring:
+    name: Spring Boot CI
+    uses: ./.github/workflows/_ci-spring.yml
+
+  inspection:
+    name: Inspection Demo CI
+    uses: ./.github/workflows/_ci-inspection.yml

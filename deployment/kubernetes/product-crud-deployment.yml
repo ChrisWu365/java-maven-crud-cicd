@@ -6,6 +6,11 @@ metadata:
     app: product-crud
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: product-crud
@@ -16,10 +21,18 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: product-crud
           image: IMAGE_REF
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - name: http
               containerPort: 8080
