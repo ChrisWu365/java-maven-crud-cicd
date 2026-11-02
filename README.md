@@ -116,6 +116,40 @@ NodePort `30080`, the inspection Web NodePort `30173`, and monitoring NodePorts
 
 ![Prometheus alerts](.github/assets/ScreenShot_Prometheus.png)
 
+### Inspection demo user instructions
+
+The following screenshots demonstrate the inspection demo workflow:
+
+#### Login
+
+Sign in with one of the demo accounts:
+
+![Inspection login](.github/assets/inspection/ScreenShot_Inspection_Login.png)
+
+#### Compliance operations
+
+View and manage inspection records based on your role permissions:
+
+![Compliance operations](.github/assets/inspection/ScreenShot_Inspection_Compliance_Operations.png)
+
+#### New inspection
+
+Create a new inspection record with observations and corrective actions:
+
+![New inspection](.github/assets/inspection/ScreenShot_Inspection_New_Inspection.png)
+
+#### Update inspection
+
+Edit existing inspection details:
+
+![Update inspection](.github/assets/inspection/ScreenShot_Inspection_Update_Inspection.png)
+
+#### Print inspection
+
+Generate a printable inspection report:
+
+![Print inspection](.github/assets/inspection/ScreenShot_Inspection_Print_Inspection.png)
+
 ## Local development setup
 
 Step-by-step instructions for preparing a development machine on Windows or

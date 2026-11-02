@@ -112,6 +112,40 @@ Azure Network Security Group 放行 SSH `22` 端口、Product API NodePort
 
 ![Prometheus 告警](.github/assets/ScreenShot_Prometheus.png)
 
+### Inspection 演示用户指南
+
+以下截图展示了检查演示的使用流程：
+
+#### 登录
+
+使用 demo 账号登录：
+
+![检查登录](.github/assets/inspection/ScreenShot_Inspection_Login.png)
+
+#### 合规操作
+
+根据角色权限查看和管理检查记录：
+
+![合规操作](.github/assets/inspection/ScreenShot_Inspection_Compliance_Operations.png)
+
+#### 新建检查
+
+创建新的检查记录，包含观察项和整改措施：
+
+![新建检查](.github/assets/inspection/ScreenShot_Inspection_New_Inspection.png)
+
+#### 更新检查
+
+编辑现有检查详情：
+
+![更新检查](.github/assets/inspection/ScreenShot_Inspection_Update_Inspection.png)
+
+#### 打印检查
+
+生成可打印的检查报告：
+
+![打印检查](.github/assets/inspection/ScreenShot_Inspection_Print_Inspection.png)
+
 ## 本地开发环境搭建
 
 以下步骤说明如何在 Windows 或 macOS 上准备开发环境并运行本项目。
